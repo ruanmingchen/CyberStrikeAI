@@ -41,6 +41,8 @@ type PlanExecuteRootArgs struct {
 	FilesystemMiddleware adk.ChatModelAgentMiddleware
 	// PlannerReplannerRewriteHandlers applies BeforeModelRewriteState pipeline for planner/replanner input.
 	PlannerReplannerRewriteHandlers []adk.ChatModelAgentMiddleware
+	// ModelFacingTrace 可选：由 Executor Handlers 链末尾写入，供 last_react 与 summarization 后上下文对齐。
+	ModelFacingTrace *modelFacingTraceHolder
 }
 
 // NewPlanExecuteRoot 返回 plan → execute → replan 预置编排根节点（与 Deep / Supervisor 并列）。
@@ -100,6 +102,11 @@ func NewPlanExecuteRoot(ctx context.Context, a *PlanExecuteRootArgs) (adk.Resuma
 	execHandlers = append(execHandlers, newOrphanToolPrunerMiddleware(a.Logger, "plan_execute_executor"))
 	if teleMw := newEinoModelInputTelemetryMiddleware(a.Logger, a.ModelName, a.ConversationID, "plan_execute_executor"); teleMw != nil {
 		execHandlers = append(execHandlers, teleMw)
+	}
+	if a.ModelFacingTrace != nil {
+		if capMw := newModelFacingTraceMiddleware(a.ModelFacingTrace); capMw != nil {
+			execHandlers = append(execHandlers, capMw)
+		}
 	}
 	executor, err := newPlanExecuteExecutor(ctx, &planexecute.ExecutorConfig{
 		Model:         a.ExecModel,

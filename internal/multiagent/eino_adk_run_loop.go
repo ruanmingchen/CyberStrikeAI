@@ -84,6 +84,10 @@ type einoADKRunLoopArgs struct {
 
 	// EmptyResponseMessage 当未捕获到助手正文时的占位（多代理与单代理文案不同）。
 	EmptyResponseMessage string
+
+	// ModelFacingTrace 可选：由各 ChatModelAgent Handlers 链末尾中间件写入「即将送入模型」的消息快照；
+	// 非空时优先用于 LastAgentTraceInput 序列化，使续跑与 summarization/reduction 后的上下文一致。
+	ModelFacingTrace *modelFacingTraceHolder
 }
 
 func runEinoADKAgentLoop(ctx context.Context, args *einoADKRunLoopArgs, baseMsgs []adk.Message) (*RunResult, error) {
@@ -406,7 +410,8 @@ func runEinoADKAgentLoop(ctx context.Context, args *einoADKRunLoopArgs, baseMsgs
 		}
 		ids := snapshotMCPIDs()
 		return buildEinoRunResultFromAccumulated(
-			orchMode, runAccumulatedMsgs, lastAssistant, lastPlanExecuteExecutor, emptyHint, ids, true,
+			orchMode, runAccumulatedMsgs, persistTraceSource(args, runAccumulatedMsgs),
+			lastAssistant, lastPlanExecuteExecutor, emptyHint, ids, true,
 		), runErr
 	}
 
@@ -886,9 +891,19 @@ func runEinoADKAgentLoop(ctx context.Context, args *einoADKRunLoopArgs, baseMsgs
 	mcpIDsMu.Unlock()
 
 	out := buildEinoRunResultFromAccumulated(
-		orchMode, runAccumulatedMsgs, lastAssistant, lastPlanExecuteExecutor, emptyHint, ids, false,
+		orchMode, runAccumulatedMsgs, persistTraceSource(args, runAccumulatedMsgs),
+		lastAssistant, lastPlanExecuteExecutor, emptyHint, ids, false,
 	)
 	return out, nil
+}
+
+func persistTraceSource(args *einoADKRunLoopArgs, fallback []adk.Message) []adk.Message {
+	if args != nil && args.ModelFacingTrace != nil {
+		if snap := args.ModelFacingTrace.Snapshot(); len(snap) > 0 {
+			return snap
+		}
+	}
+	return fallback
 }
 
 func einoPartialRunLastOutputHint() string {
@@ -899,13 +914,18 @@ func einoPartialRunLastOutputHint() string {
 func buildEinoRunResultFromAccumulated(
 	orchMode string,
 	runAccumulatedMsgs []adk.Message,
+	persistMsgs []adk.Message,
 	lastAssistant string,
 	lastPlanExecuteExecutor string,
 	emptyHint string,
 	mcpIDs []string,
 	partial bool,
 ) *RunResult {
-	histJSON, _ := json.Marshal(runAccumulatedMsgs)
+	traceForJSON := persistMsgs
+	if len(traceForJSON) == 0 {
+		traceForJSON = runAccumulatedMsgs
+	}
+	histJSON, _ := json.Marshal(traceForJSON)
 	cleaned := strings.TrimSpace(lastAssistant)
 	if orchMode == "plan_execute" {
 		if e := strings.TrimSpace(lastPlanExecuteExecutor); e != "" {

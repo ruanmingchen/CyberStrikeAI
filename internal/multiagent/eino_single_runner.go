@@ -132,7 +132,9 @@ func RunEinoSingleChatModelAgent(
 		return nil, fmt.Errorf("eino single summarization: %w", err)
 	}
 
-	handlers := make([]adk.ChatModelAgentMiddleware, 0, 4)
+	modelFacingTrace := newModelFacingTraceHolder()
+
+	handlers := make([]adk.ChatModelAgentMiddleware, 0, 8)
 	if len(mainOrchestratorPre) > 0 {
 		handlers = append(handlers, mainOrchestratorPre...)
 	}
@@ -149,6 +151,9 @@ func RunEinoSingleChatModelAgent(
 	handlers = append(handlers, mainSumMw)
 	if teleMw := newEinoModelInputTelemetryMiddleware(logger, appCfg.OpenAI.Model, conversationID, "eino_single"); teleMw != nil {
 		handlers = append(handlers, teleMw)
+	}
+	if capMw := newModelFacingTraceMiddleware(modelFacingTrace); capMw != nil {
+		handlers = append(handlers, capMw)
 	}
 
 	maxIter := ma.MaxIteration
@@ -236,6 +241,7 @@ func RunEinoSingleChatModelAgent(
 		McpIDs:               &mcpIDs,
 		ToolInvokeNotify:     toolInvokeNotify,
 		DA:                   chatAgent,
+		ModelFacingTrace:     modelFacingTrace,
 		EmptyResponseMessage: "(Eino ADK single-agent session completed but no assistant text was captured. Check process details or logs.) " +
 			"（Eino ADK 单代理会话已完成，但未捕获到助手文本输出。请查看过程详情或日志。）",
 	}, baseMsgs)

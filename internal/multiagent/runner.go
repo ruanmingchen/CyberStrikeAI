@@ -311,6 +311,8 @@ func RunDeepAgent(
 		return nil, fmt.Errorf("多代理主 summarization 中间件: %w", err)
 	}
 
+	modelFacingTrace := newModelFacingTraceHolder()
+
 	// 与 deep.Config.Name / supervisor 主代理 Name 一致。
 	orchestratorName := "cyberstrike-deep"
 	orchDescription := "Coordinates specialist agents and MCP tools for authorized security testing."
@@ -407,6 +409,9 @@ func RunDeepAgent(
 	if teleMw := newEinoModelInputTelemetryMiddleware(logger, appCfg.OpenAI.Model, conversationID, "deep_orchestrator"); teleMw != nil {
 		deepHandlers = append(deepHandlers, teleMw)
 	}
+	if capMw := newModelFacingTraceMiddleware(modelFacingTrace); capMw != nil {
+		deepHandlers = append(deepHandlers, capMw)
+	}
 
 	supHandlers := []adk.ChatModelAgentMiddleware{}
 	if len(mainOrchestratorPre) > 0 {
@@ -419,6 +424,9 @@ func RunDeepAgent(
 	supHandlers = append(supHandlers, newOrphanToolPrunerMiddleware(logger, "supervisor_orchestrator"))
 	if teleMw := newEinoModelInputTelemetryMiddleware(logger, appCfg.OpenAI.Model, conversationID, "supervisor_orchestrator"); teleMw != nil {
 		supHandlers = append(supHandlers, teleMw)
+	}
+	if capMw := newModelFacingTraceMiddleware(modelFacingTrace); capMw != nil {
+		supHandlers = append(supHandlers, capMw)
 	}
 
 	mainToolsCfg := adk.ToolsConfig{
@@ -465,6 +473,7 @@ func RunDeepAgent(
 			ExecPreMiddlewares:   mainOrchestratorPre,
 			SkillMiddleware:      einoSkillMW,
 			FilesystemMiddleware: peFsMw,
+			ModelFacingTrace:     modelFacingTrace,
 			PlannerReplannerRewriteHandlers: []adk.ChatModelAgentMiddleware{
 				mainSumMw,
 				// 孤儿 tool 消息兜底：必须挂在 summarization 之后、telemetry 之前。
@@ -569,6 +578,7 @@ func RunDeepAgent(
 		McpIDs:               &mcpIDs,
 		ToolInvokeNotify:     toolInvokeNotify,
 		DA:                   da,
+		ModelFacingTrace:     modelFacingTrace,
 		EmptyResponseMessage: "(Eino multi-agent orchestration completed but no assistant text was captured. Check process details or logs.) " +
 			"（Eino 多代理编排已完成，但未捕获到助手文本输出。请查看过程详情或日志。）",
 	}, baseMsgs)
