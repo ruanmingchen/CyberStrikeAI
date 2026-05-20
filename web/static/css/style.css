@@ -4466,6 +4466,16 @@ header {
     font-size: 0.875rem;
 }
 
+.audit-resource-removed {
+    color: var(--text-secondary);
+    font-size: 0.8125rem;
+}
+
+.audit-resource-meta code {
+    font-size: 0.8125rem;
+    word-break: break-all;
+}
+
 /* 系统设置 - 终端 */
 .terminal-wrapper {
     border: 1px solid var(--border-color);

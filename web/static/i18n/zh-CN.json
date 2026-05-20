@@ -1851,6 +1851,9 @@
       "markdown_delete": "删除子代理"
     },
     "openResource": "打开关联资源",
+    "openResourceChat": "打开关联资源（chat）",
+    "resourceIdLabel": "资源 ID",
+    "resourceRemoved": "（关联对象已删除）",
     "filterAll": "全部",
     "filterBtn": "筛选",
     "resetBtn": "重置",

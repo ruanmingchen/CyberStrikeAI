@@ -1862,6 +1862,9 @@
       "markdown_delete": "Delete sub-agent"
     },
     "openResource": "Open linked resource",
+    "openResourceChat": "Open linked resource (chat)",
+    "resourceIdLabel": "Resource ID",
+    "resourceRemoved": "(resource no longer exists)",
     "filterAll": "All",
     "filterBtn": "Filter",
     "resetBtn": "Reset",

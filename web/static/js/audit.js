@@ -15,7 +15,7 @@ const AUDIT_ACTIONS_BY_CATEGORY = {
         'session_delete', 'task_create', 'task_cancel', 'task_delete'],
     webshell: ['connection_create', 'connection_delete'],
     knowledge: ['item_delete', 'index_rebuild'],
-    conversation: ['delete', 'delete_turn'],
+    conversation: ['create', 'delete', 'delete_turn'],
     vulnerability: ['create', 'update', 'delete'],
     external_mcp: ['upsert', 'delete'],
     task: ['create_queue', 'start_queue', 'delete_queue', 'pause_queue', 'rerun_queue', 'delete_batch_task'],
@@ -337,15 +337,84 @@ function resetAuditLogFilters() {
     filterAuditLogs();
 }
 
+/** 资源已被删除/移除的审计操作，不再提供「打开关联资源」 */
+const AUDIT_ACTIONS_RESOURCE_REMOVED = {
+    delete: true,
+    item_delete: true,
+    connection_delete: true,
+    listener_delete: true,
+    session_delete: true,
+    task_delete: true,
+    execution_delete: true,
+    execution_delete_batch: true,
+    delete_queue: true,
+    delete_batch_task: true,
+    markdown_delete: true
+};
+
+function auditResourceWasRemoved(log) {
+    if (!log || !log.action) return false;
+    return !!AUDIT_ACTIONS_RESOURCE_REMOVED[log.action];
+}
+
+/** 删除类操作，或关联资源已不存在（由详情 API resourceAvailable 判定） */
+function auditResourceUnavailable(log) {
+    if (!log) return false;
+    if (auditResourceWasRemoved(log)) return true;
+    return log.resourceAvailable === false;
+}
+
+function auditResourceMeta(log) {
+    if (!log || !log.resourceId) return '';
+    const esc = typeof escapeHtml === 'function' ? escapeHtml : function (s) { return String(s || ''); };
+    const id = esc(log.resourceId);
+    if (auditResourceUnavailable(log)) {
+        const idLabel = esc(auditT('settingsAudit.resourceIdLabel', null, '资源 ID'));
+        const removed = esc(auditT('settingsAudit.resourceRemoved', null, '（关联对象已删除）'));
+        return '<p class="audit-resource-meta"><strong>' + idLabel + ':</strong> <code>' + id +
+            '</code> <span class="audit-resource-removed">' + removed + '</span></p>';
+    }
+    const link = auditResourceLink(log);
+    return link || ('<p><strong>ID:</strong> ' + id + '</p>');
+}
+
+async function auditOpenConversationChat(conversationId) {
+    const id = String(conversationId || '').trim();
+    if (!id) return;
+    if (typeof apiFetch === 'function') {
+        try {
+            const r = await apiFetch('/api/conversations/' + encodeURIComponent(id));
+            if (!r.ok) {
+                if (typeof showToast === 'function') {
+                    showToast(auditT('settingsAudit.resourceRemoved', null, '（关联对象已删除）'), 'warning');
+                }
+                return;
+            }
+        } catch (_) {
+            return;
+        }
+    }
+    closeAuditDetailModal();
+    if (typeof switchPage === 'function') {
+        switchPage('chat');
+    }
+    if (typeof loadConversation === 'function') {
+        void loadConversation(id);
+    }
+}
+window.auditOpenConversationChat = auditOpenConversationChat;
+
 function auditResourceLink(log) {
-    if (!log) return '';
+    if (!log || auditResourceUnavailable(log)) return '';
     const type = log.resourceType || '';
     const id = log.resourceId || '';
     if (!id) return '';
     const esc = typeof escapeHtml === 'function' ? escapeHtml : function (s) { return String(s || ''); };
     const label = esc(auditT('settingsAudit.openResource', null, '打开关联资源'));
     if (type === 'conversation' || (type === '' && id.length > 8 && !id.startsWith('c2_'))) {
-        return '<p><button type="button" class="btn-secondary btn-small" onclick="closeAuditDetailModal();if(typeof switchPage===\'function\'){switchPage(\'chat\');}">' + label + ' (chat)</button></p>';
+        const chatLabel = esc(auditT('settingsAudit.openResourceChat', null, '打开关联资源（chat）'));
+        return '<p><button type="button" class="btn-secondary btn-small audit-open-chat-btn" data-conversation-id="' +
+            esc(id) + '">' + chatLabel + '</button></p>';
     }
     if (type === 'vulnerability' || type === 'batch_queue') {
         const page = type === 'batch_queue' ? 'tasks' : 'vulnerabilities';
@@ -370,7 +439,7 @@ function auditResourceLink(log) {
     if (type === 'role' || type === 'skill' || type === 'markdown_agent') {
         return '<p><button type="button" class="btn-secondary btn-small" onclick="closeAuditDetailModal();if(typeof switchSettingsSection===\'function\'){switchPage(\'settings\');switchSettingsSection(\'roles\');}">' + label + '</button></p>';
     }
-    return id ? '<p><strong>ID:</strong> ' + esc(id) + '</p>' : '';
+    return '';
 }
 
 function refreshAuditLogs() {
@@ -497,13 +566,19 @@ async function showAuditLogDetail(id) {
             (log.clientIp ? '<p><strong>IP:</strong> ' + esc(log.clientIp) + '</p>' : '') +
             (log.sessionHint ? '<p><strong>' + esc(auditT('settingsAudit.detailSession', null, '会话')) + ':</strong> ' + esc(log.sessionHint) + '</p>' : '') +
             (log.userAgent ? '<p><strong>UA:</strong> ' + esc(log.userAgent) + '</p>' : '') +
-            auditResourceLink(log) +
+            auditResourceMeta(log) +
             (detail ? '<pre class="audit-detail-pre">' + esc(detail) + '</pre>' : '') +
             '</div>' +
             '<div class="modal-footer"><button type="button" class="btn-secondary" onclick="closeAuditDetailModal()">' +
             esc(auditT('common.close', null, '关闭')) + '</button></div>' +
             '</div>';
         document.body.appendChild(overlay);
+        const chatBtn = overlay.querySelector('.audit-open-chat-btn');
+        if (chatBtn) {
+            chatBtn.addEventListener('click', function () {
+                auditOpenConversationChat(chatBtn.getAttribute('data-conversation-id'));
+            });
+        }
         overlay.addEventListener('click', function (ev) {
             if (ev.target === overlay) closeAuditDetailModal();
         });
