@@ -148,14 +148,12 @@ func planExecutePlannerGenInput(
 	}
 	return func(ctx context.Context, userInput []adk.Message) ([]adk.Message, error) {
 		userInput = capPlanExecuteUserInputMessages(userInput, appCfg, mwCfg)
-		msgs := make([]adk.Message, 0, 1+len(userInput))
-		if oi != "" {
-			msgs = append(msgs, schema.SystemMessage(oi))
-		}
+		msgs := make([]adk.Message, 0, len(userInput))
 		msgs = append(msgs, userInput...)
 		if rewritten, rerr := applyBeforeModelRewriteHandlers(ctx, msgs, rewriteHandlers); rerr == nil && len(rewritten) > 0 {
 			msgs = rewritten
 		}
+		msgs = normalizeSingleLeadingSystemMessage(msgs, oi)
 		logPlanExecuteModelInputEstimate(logger, modelName, conversationID, "plan_execute_planner", msgs)
 		return msgs, nil
 	}
@@ -184,9 +182,7 @@ func planExecuteExecutorGenInput(
 		if err != nil {
 			return nil, err
 		}
-		if oi != "" {
-			userMsgs = append([]adk.Message{schema.SystemMessage(oi)}, userMsgs...)
-		}
+		userMsgs = normalizeSingleLeadingSystemMessage(userMsgs, oi)
 		logPlanExecuteModelInputEstimate(logger, modelName, conversationID, "plan_execute_executor_gen_input", userMsgs)
 		return userMsgs, nil
 	}
@@ -233,15 +229,52 @@ func planExecuteReplannerGenInput(
 		if err != nil {
 			return nil, err
 		}
-		if oi != "" {
-			msgs = append([]adk.Message{schema.SystemMessage(oi)}, msgs...)
-		}
 		if rewritten, rerr := applyBeforeModelRewriteHandlers(ctx, msgs, rewriteHandlers); rerr == nil && len(rewritten) > 0 {
 			msgs = rewritten
 		}
+		msgs = normalizeSingleLeadingSystemMessage(msgs, oi)
 		logPlanExecuteModelInputEstimate(logger, modelName, conversationID, "plan_execute_replanner", msgs)
 		return msgs, nil
 	}
+}
+
+// normalizeSingleLeadingSystemMessage enforces a provider-friendly message shape:
+// exactly one system message at index 0 (when any system context exists).
+// For strict OpenAI-compatible backends (e.g. qwen/vllm templates), this avoids
+// "System message must be at the beginning" caused by multiple/disordered system messages.
+func normalizeSingleLeadingSystemMessage(msgs []adk.Message, extraSystem string) []adk.Message {
+	extraSystem = strings.TrimSpace(extraSystem)
+	if len(msgs) == 0 {
+		if extraSystem == "" {
+			return msgs
+		}
+		return []adk.Message{schema.SystemMessage(extraSystem)}
+	}
+
+	systemParts := make([]string, 0, 2)
+	if extraSystem != "" {
+		systemParts = append(systemParts, extraSystem)
+	}
+	nonSystem := make([]adk.Message, 0, len(msgs))
+	for _, msg := range msgs {
+		if msg == nil {
+			continue
+		}
+		if msg.Role == schema.System {
+			if s := strings.TrimSpace(msg.Content); s != "" {
+				systemParts = append(systemParts, s)
+			}
+			continue
+		}
+		nonSystem = append(nonSystem, msg)
+	}
+	if len(systemParts) == 0 {
+		return nonSystem
+	}
+	out := make([]adk.Message, 0, len(nonSystem)+1)
+	out = append(out, schema.SystemMessage(strings.Join(systemParts, "\n\n")))
+	out = append(out, nonSystem...)
+	return out
 }
 
 func capPlanExecuteUserInputMessages(input []adk.Message, appCfg *config.Config, mwCfg *config.MultiAgentEinoMiddlewareConfig) []adk.Message {

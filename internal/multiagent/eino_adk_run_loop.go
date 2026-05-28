@@ -345,7 +345,9 @@ func runEinoADKAgentLoop(ctx context.Context, args *einoADKRunLoopArgs, baseMsgs
 	}
 
 	runnerCfg := adk.RunnerConfig{
-		Agent:           da,
+		Agent: da,
+		// 启用 ADK 流式事件：plan_execute 也需要输出 reasoning/response 流，
+		// 与 deep/supervisor/eino_single 的前端体验保持一致。
 		EnableStreaming: true,
 	}
 	var cpStore *fileCheckPointStore
