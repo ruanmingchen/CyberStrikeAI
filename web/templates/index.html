@@ -162,13 +162,13 @@
                         </div>
                     </div>
                     <div class="nav-item" data-page="projects">
-                        <div class="nav-item-content" data-title="项目管理" onclick="switchPage('projects')">
+                        <div class="nav-item-content" data-title="项目管理" onclick="switchPage('projects')" data-i18n="nav.projects" data-i18n-attr="data-title" data-i18n-skip-text="true">
                             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
                                 <polyline points="2 17 12 22 22 17"></polyline>
                                 <polyline points="2 12 12 17 22 12"></polyline>
                             </svg>
-                            <span>项目管理</span>
+                            <span data-i18n="nav.projects">项目管理</span>
                         </div>
                     </div>
                     <div class="nav-item" data-page="vulnerabilities">
@@ -956,16 +956,16 @@
                                 <div class="chat-input-primary-row">
                                 <div class="chat-input-leading">
                                 <div class="role-selector-wrapper project-selector-wrapper">
-                                    <button type="button" id="chat-project-btn" class="role-selector-btn" onclick="toggleChatProjectPanel()" aria-label="选择项目" aria-haspopup="listbox" aria-expanded="false" title="绑定项目后共享事实黑板（跨对话）">
+                                    <button type="button" id="chat-project-btn" class="role-selector-btn" onclick="toggleChatProjectPanel()" aria-label="选择项目" aria-haspopup="listbox" aria-expanded="false" title="绑定项目后共享事实黑板（跨对话）" data-i18n="projects.chatSelectorButton" data-i18n-attr="aria-label,title">
                                         <span class="role-selector-icon" aria-hidden="true">📁</span>
-                                        <span id="chat-project-text" class="role-selector-text">无项目</span>
+                                        <span id="chat-project-text" class="role-selector-text" data-i18n="projects.noProject">无项目</span>
                                         <svg class="role-selector-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                                             <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                                         </svg>
                                     </button>
                                     <div id="chat-project-panel" class="role-selection-panel chat-project-panel" style="display: none;" role="listbox" aria-labelledby="chat-project-panel-title">
                                         <div class="role-selection-panel-header">
-                                            <h3 id="chat-project-panel-title" class="role-selection-panel-title">选择项目</h3>
+                                            <h3 id="chat-project-panel-title" class="role-selection-panel-title" data-i18n="projects.selectProject">选择项目</h3>
                                             <button type="button" class="role-selection-panel-close" onclick="closeChatProjectPanel()" title="关闭" aria-label="关闭">
                                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                                                     <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
@@ -977,7 +977,7 @@
                                             <div class="chat-project-panel-footer">
                                                 <button type="button" class="role-selection-item-main chat-project-panel-create-btn" onclick="showNewProjectModalFromChat()">
                                                     <span class="chat-project-panel-create-icon" aria-hidden="true">+</span>
-                                                    <span class="chat-project-panel-create-label">新建项目</span>
+                                                    <span class="chat-project-panel-create-label" data-i18n="projects.newProject">新建项目</span>
                                                 </button>
                                             </div>
                                         </div>
@@ -1426,36 +1426,36 @@
                 <!-- 项目管理页面 -->
                 <div id="page-projects" class="page projects-page">
                     <div class="page-header">
-                        <h2>项目管理</h2>
+                        <h2 data-i18n="projects.title">项目管理</h2>
                         <div class="page-header-actions">
-                            <label class="projects-show-archived-label"><input type="checkbox" id="projects-show-archived" onchange="loadProjectsList()"> 显示已归档</label>
-                            <button class="btn-secondary" type="button" onclick="loadProjectsList()">刷新</button>
-                            <button class="btn-primary" type="button" onclick="showNewProjectModal()">+ 新建项目</button>
+                            <label class="projects-show-archived-label"><input type="checkbox" id="projects-show-archived" onchange="loadProjectsList()"> <span data-i18n="projects.showArchived">显示已归档</span></label>
+                            <button class="btn-secondary" type="button" onclick="loadProjectsList()" data-i18n="common.refresh">刷新</button>
+                            <button class="btn-primary" type="button" onclick="showNewProjectModal()" data-i18n="projects.newProjectCta">+ 新建项目</button>
                         </div>
                     </div>
                     <div class="page-content projects-page-layout">
                         <aside class="projects-sidebar-card">
                             <div class="projects-sidebar-head">
-                                <span class="projects-sidebar-title">项目列表</span>
+                                <span class="projects-sidebar-title" data-i18n="projects.projectList">项目列表</span>
                                 <span class="projects-sidebar-count" id="projects-list-count">0</span>
                             </div>
                             <div class="projects-sidebar-search">
-                                <input type="search" id="projects-list-search" class="form-input" placeholder="搜索项目…" oninput="filterProjectsList()" autocomplete="off">
+                                <input type="search" id="projects-list-search" class="form-input" placeholder="搜索项目…" oninput="filterProjectsList()" autocomplete="off" data-i18n="projects.searchProjectsPlaceholder" data-i18n-attr="placeholder">
                             </div>
                             <div id="projects-list" class="projects-list"></div>
                         </aside>
                         <main class="projects-detail" id="projects-detail-main">
                             <div class="projects-detail-placeholder" id="projects-detail-placeholder">
-                                <h3>选择或创建项目</h3>
-                                <p>项目用于跨对话共享「事实黑板」：目标、环境、认证等信息会在绑定项目的对话中自动注入。</p>
-                                <button class="btn-primary" type="button" onclick="showNewProjectModal()">创建第一个项目</button>
+                                <h3 data-i18n="projects.selectOrCreateTitle">选择或创建项目</h3>
+                                <p data-i18n="projects.selectOrCreateHint">项目用于跨对话共享「事实黑板」：目标、环境、认证等信息会在绑定项目的对话中自动注入。</p>
+                                <button class="btn-primary" type="button" onclick="showNewProjectModal()" data-i18n="projects.createFirstProject">创建第一个项目</button>
                             </div>
                             <div class="projects-detail-inner" id="projects-detail-inner" hidden>
                                 <header class="projects-detail-header">
                                     <div class="projects-detail-header-main">
                                         <div class="projects-detail-title-row">
-                                            <h3 id="projects-detail-title" class="projects-detail-title">项目</h3>
-                                            <span id="projects-detail-status" class="projects-status-pill projects-status-pill--active">进行中</span>
+                                            <h3 id="projects-detail-title" class="projects-detail-title" data-i18n="projects.defaultProjectName">项目</h3>
+                                            <span id="projects-detail-status" class="projects-status-pill projects-status-pill--active" data-i18n="projects.statusActive">进行中</span>
                                         </div>
                                         <p id="projects-detail-meta" class="projects-detail-meta"></p>
                                         <p id="projects-detail-desc" class="projects-detail-desc"></p>
@@ -1467,15 +1467,15 @@
                                         </div>
                                     </div>
                                     <div class="projects-detail-header-actions">
-                                        <button type="button" class="btn-secondary btn-small" onclick="openVulnerabilitiesForProject()">漏洞管理</button>
-                                        <button type="button" class="btn-primary btn-small" onclick="showAddFactModal()">+ 添加事实</button>
+                                        <button type="button" class="btn-secondary btn-small" onclick="openVulnerabilitiesForProject()" data-i18n="projects.vulnerabilityManagement">漏洞管理</button>
+                                        <button type="button" class="btn-primary btn-small" onclick="showAddFactModal()" data-i18n="projects.addFactCta">+ 添加事实</button>
                                     </div>
                                 </header>
                                 <nav class="projects-tabs" role="tablist">
-                                    <button type="button" id="project-tab-facts" class="projects-tab is-active" role="tab" onclick="switchProjectTab('facts')">事实黑板</button>
-                                    <button type="button" id="project-tab-conversations" class="projects-tab" role="tab" onclick="switchProjectTab('conversations')">关联对话</button>
-                                    <button type="button" id="project-tab-vulns" class="projects-tab" role="tab" onclick="switchProjectTab('vulns')">关联漏洞</button>
-                                    <button type="button" id="project-tab-settings" class="projects-tab" role="tab" onclick="switchProjectTab('settings')">设置</button>
+                                    <button type="button" id="project-tab-facts" class="projects-tab is-active" role="tab" onclick="switchProjectTab('facts')" data-i18n="projects.tabFacts">事实黑板</button>
+                                    <button type="button" id="project-tab-conversations" class="projects-tab" role="tab" onclick="switchProjectTab('conversations')" data-i18n="projects.tabConversations">关联对话</button>
+                                    <button type="button" id="project-tab-vulns" class="projects-tab" role="tab" onclick="switchProjectTab('vulns')" data-i18n="projects.tabVulns">关联漏洞</button>
+                                    <button type="button" id="project-tab-settings" class="projects-tab" role="tab" onclick="switchProjectTab('settings')" data-i18n="projects.tabSettings">设置</button>
                                 </nav>
                                 <div id="project-panel-facts" class="projects-panel" role="tabpanel">
                                     <div class="projects-fact-toolbar">
@@ -1484,21 +1484,21 @@
                                                 <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
                                                 <path d="M12 10v6M12 8h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                                             </svg>
-                                            <span>索引仅含 <strong>key</strong> 与 <strong>摘要</strong>（须含「什么 + 在哪 + 如何验证」）；攻击链 / POC 写在 <strong>body</strong>，Agent 通过 <code>get_project_fact</code> 复现</span>
+                                            <span data-i18n="projects.factToolbarHint">索引仅含 key 与摘要（须含「什么 + 在哪 + 如何验证」）；攻击链 / POC 写在 body，Agent 通过 get_project_fact 复现</span>
                                         </p>
                                         <div class="projects-fact-toolbar-filters" role="search">
                                             <label class="projects-fact-filter-field projects-fact-filter-field--search">
-                                                <span class="sr-only">搜索事实</span>
+                                                <span class="sr-only" data-i18n="projects.searchFactsSr">搜索事实</span>
                                                 <svg class="projects-fact-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
                                                     <circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/>
                                                     <path d="M20 20L16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                                                 </svg>
-                                                <input type="search" id="project-facts-search" placeholder="搜索 key、摘要、body…" oninput="debouncedLoadProjectFacts()" autocomplete="off">
+                                                <input type="search" id="project-facts-search" placeholder="搜索 key、摘要、body…" oninput="debouncedLoadProjectFacts()" autocomplete="off" data-i18n="projects.searchFactsPlaceholder" data-i18n-attr="placeholder">
                                             </label>
                                             <label class="projects-fact-filter-field">
-                                                <span class="projects-fact-filter-label">分类</span>
+                                                <span class="projects-fact-filter-label" data-i18n="projects.category">分类</span>
                                                 <select id="project-facts-filter-category" onchange="loadProjectFacts()">
-                                                    <option value="">全部</option>
+                                                    <option value="" data-i18n="projects.all">全部</option>
                                                     <option value="target">target</option>
                                                     <option value="auth">auth</option>
                                                     <option value="infra">infra</option>
@@ -1511,52 +1511,52 @@
                                                 </select>
                                             </label>
                                             <label class="projects-fact-filter-field">
-                                                <span class="projects-fact-filter-label">置信度</span>
+                                                <span class="projects-fact-filter-label" data-i18n="projects.confidence">置信度</span>
                                                 <select id="project-facts-filter-confidence" onchange="loadProjectFacts()">
-                                                    <option value="">全部</option>
-                                                    <option value="confirmed">已确认</option>
-                                                    <option value="tentative">待确认</option>
-                                                    <option value="deprecated">已废弃</option>
+                                                    <option value="" data-i18n="projects.all">全部</option>
+                                                    <option value="confirmed" data-i18n="projects.confidenceConfirmed">已确认</option>
+                                                    <option value="tentative" data-i18n="projects.confidenceTentative">待确认</option>
+                                                    <option value="deprecated" data-i18n="projects.confidenceDeprecated">已废弃</option>
                                                 </select>
                                             </label>
-                                            <div class="projects-fact-filter-toggles" role="group" aria-label="显示选项">
+                                            <div class="projects-fact-filter-toggles" role="group" aria-label="显示选项" data-i18n="projects.displayOptions" data-i18n-attr="aria-label">
                                                 <label class="projects-fact-toggle">
                                                     <input type="checkbox" id="project-facts-filter-sparse" onchange="loadProjectFacts()">
-                                                    <span>仅待补全</span>
+                                                    <span data-i18n="projects.sparseOnly">仅待补全</span>
                                                 </label>
                                                 <label class="projects-fact-toggle">
                                                     <input type="checkbox" id="project-facts-filter-hide-deprecated" checked onchange="loadProjectFacts()">
-                                                    <span>隐藏废弃</span>
+                                                    <span data-i18n="projects.hideDeprecated">隐藏废弃</span>
                                                 </label>
                                             </div>
                                         </div>
                                     </div>
                                     <div class="projects-table-wrap">
                                         <table class="data-table data-table--projects">
-                                            <thead><tr><th>Key</th><th>分类</th><th>摘要</th><th>Body</th><th>置信度</th><th>更新</th><th class="col-actions">操作</th></tr></thead>
+                                            <thead><tr><th>Key</th><th data-i18n="projects.category">分类</th><th data-i18n="projects.summary">摘要</th><th>Body</th><th data-i18n="projects.confidence">置信度</th><th data-i18n="projects.updated">更新</th><th class="col-actions" data-i18n="common.actions">操作</th></tr></thead>
                                             <tbody id="project-facts-tbody"></tbody>
                                         </table>
                                     </div>
                                 </div>
                                 <div id="project-panel-conversations" class="projects-panel" role="tabpanel" hidden>
                                     <div class="projects-panel-toolbar">
-                                        <span class="projects-panel-hint">绑定到本项目的对话；点击可打开会话</span>
+                                        <span class="projects-panel-hint" data-i18n="projects.boundConversationsHint">绑定到本项目的对话；点击可打开会话</span>
                                     </div>
                                     <div class="projects-table-wrap">
                                         <table class="data-table data-table--projects">
-                                            <thead><tr><th>标题</th><th>更新</th><th class="col-actions">操作</th></tr></thead>
+                                            <thead><tr><th data-i18n="projects.titleLabel">标题</th><th data-i18n="projects.updated">更新</th><th class="col-actions" data-i18n="common.actions">操作</th></tr></thead>
                                             <tbody id="project-conversations-tbody"></tbody>
                                         </table>
                                     </div>
                                 </div>
                                 <div id="project-panel-vulns" class="projects-panel" role="tabpanel" hidden>
                                     <div class="projects-panel-toolbar">
-                                        <span class="projects-panel-hint">本项目下记录的漏洞汇总</span>
-                                        <button type="button" class="btn-secondary btn-small" onclick="openVulnerabilitiesForProject()">在漏洞管理中查看</button>
+                                        <span class="projects-panel-hint" data-i18n="projects.projectVulnSummaryHint">本项目下记录的漏洞汇总</span>
+                                        <button type="button" class="btn-secondary btn-small" onclick="openVulnerabilitiesForProject()" data-i18n="projects.viewInVulnerabilityManagement">在漏洞管理中查看</button>
                                     </div>
                                     <div class="projects-table-wrap">
                                         <table class="data-table data-table--projects">
-                                            <thead><tr><th>标题</th><th>严重度</th><th>状态</th><th class="col-actions">操作</th></tr></thead>
+                                            <thead><tr><th data-i18n="projects.titleLabel">标题</th><th data-i18n="projects.severity">严重度</th><th data-i18n="projects.status">状态</th><th class="col-actions" data-i18n="common.actions">操作</th></tr></thead>
                                             <tbody id="project-vulns-tbody"></tbody>
                                         </table>
                                     </div>
@@ -1565,8 +1565,8 @@
                                     <div class="projects-settings-layout">
                                         <header class="projects-settings-intro">
                                             <div class="projects-settings-intro-text">
-                                                <h4 class="projects-settings-intro-title">项目设置</h4>
-                                                <p class="projects-settings-intro-hint">配置项目元数据与 Agent 授权边界，保存后即时生效于绑定对话。</p>
+                                                <h4 class="projects-settings-intro-title" data-i18n="projects.settingsIntroTitle">项目设置</h4>
+                                                <p class="projects-settings-intro-hint" data-i18n="projects.settingsIntroHint">配置项目元数据与 Agent 授权边界，保存后即时生效于绑定对话。</p>
                                             </div>
                                         </header>
                                         <div class="projects-settings-grid">
@@ -1577,35 +1577,35 @@
                                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                                                         </span>
                                                         <div>
-                                                            <h4 class="projects-settings-card-title">基本信息</h4>
-                                                            <p class="projects-settings-card-hint">名称与描述会显示在项目详情中</p>
+                                                            <h4 class="projects-settings-card-title" data-i18n="projects.basicInfoTitle">基本信息</h4>
+                                                            <p class="projects-settings-card-hint" data-i18n="projects.basicInfoHint">名称与描述会显示在项目详情中</p>
                                                         </div>
                                                     </div>
                                                 </div>
                                                 <div class="projects-settings-card-body">
                                                     <div class="projects-form-row projects-form-row--2">
                                                         <div class="projects-form-field">
-                                                            <label for="project-edit-name">项目名称</label>
-                                                            <input type="text" id="project-edit-name" class="form-input" placeholder="例如：某客户 Web 渗透">
+                                                            <label for="project-edit-name" data-i18n="projects.projectName">项目名称</label>
+                                                            <input type="text" id="project-edit-name" class="form-input" placeholder="例如：某客户 Web 渗透" data-i18n="projects.projectNamePlaceholder" data-i18n-attr="placeholder">
                                                         </div>
                                                         <div class="projects-form-field">
-                                                            <label for="project-edit-status">状态</label>
+                                                            <label for="project-edit-status" data-i18n="projects.status">状态</label>
                                                             <div class="projects-status-select-wrap">
                                                                 <select id="project-edit-status" class="form-input projects-status-select">
-                                                                    <option value="active">进行中</option>
-                                                                    <option value="archived">已归档</option>
+                                                                    <option value="active" data-i18n="projects.statusActive">进行中</option>
+                                                                    <option value="archived" data-i18n="projects.statusArchived">已归档</option>
                                                                 </select>
                                                             </div>
                                                         </div>
                                                     </div>
                                                     <div class="projects-form-field">
                                                         <label class="projects-filter-check projects-pin-toggle">
-                                                            <input type="checkbox" id="project-edit-pinned"> 置顶项目（列表优先显示）
+                                                            <input type="checkbox" id="project-edit-pinned"> <span data-i18n="projects.pinProject">置顶项目（列表优先显示）</span>
                                                         </label>
                                                     </div>
                                                     <div class="projects-form-field">
-                                                        <label for="project-edit-description">描述</label>
-                                                        <textarea id="project-edit-description" class="form-input" rows="3" placeholder="测试目标、授权范围、联系人、注意事项…"></textarea>
+                                                        <label for="project-edit-description" data-i18n="projects.projectDescription">描述</label>
+                                                        <textarea id="project-edit-description" class="form-input" rows="3" placeholder="测试目标、授权范围、联系人、注意事项…" data-i18n="projects.editDescriptionPlaceholder" data-i18n-attr="placeholder"></textarea>
                                                     </div>
                                                 </div>
                                             </section>
@@ -1616,21 +1616,21 @@
                                                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                                                         </span>
                                                         <div>
-                                                            <h4 class="projects-settings-card-title">测试范围</h4>
-                                                            <p class="projects-settings-card-hint">JSON 格式，供 Agent 理解授权边界与目标资产</p>
+                                                            <h4 class="projects-settings-card-title" data-i18n="projects.scopeTitle">测试范围</h4>
+                                                            <p class="projects-settings-card-hint" data-i18n="projects.scopeHint">JSON 格式，供 Agent 理解授权边界与目标资产</p>
                                                         </div>
                                                     </div>
                                                     <div class="projects-scope-toolbar">
-                                                        <button type="button" class="btn-ghost btn-small" onclick="formatProjectScopeJson()" title="格式化 JSON">格式化</button>
-                                                        <button type="button" class="btn-ghost btn-small" onclick="insertProjectScopeExample()" title="插入示例">示例</button>
+                                                        <button type="button" class="btn-ghost btn-small" onclick="formatProjectScopeJson()" title="格式化 JSON" data-i18n="projects.formatJson" data-i18n-attr="title">格式化</button>
+                                                        <button type="button" class="btn-ghost btn-small" onclick="insertProjectScopeExample()" title="插入示例" data-i18n="projects.example" data-i18n-attr="title">示例</button>
                                                     </div>
                                                 </div>
                                                 <div class="projects-settings-card-body projects-settings-card-body--fill">
                                                     <div class="projects-scope-editor">
-                                                        <label for="project-edit-scope" class="sr-only">范围 JSON</label>
+                                                        <label for="project-edit-scope" class="sr-only" data-i18n="projects.scopeJsonLabel">范围 JSON</label>
                                                         <textarea id="project-edit-scope" class="form-input form-input--mono projects-scope-textarea" spellcheck="false" placeholder='{"targets":["https://example.com"],"exclude":["*.cdn.example.com"]}'></textarea>
                                                     </div>
-                                                    <p class="projects-scope-footnote">支持 <code>targets</code>、<code>exclude</code>、<code>notes</code> 等字段，留空表示不限制范围。</p>
+                                                    <p class="projects-scope-footnote" data-i18n="projects.scopeFootnote">支持 targets、exclude、notes 等字段，留空表示不限制范围。</p>
                                                 </div>
                                             </section>
                                         </div>
@@ -1640,21 +1640,21 @@
                                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                                                 </span>
                                                 <div>
-                                                    <h4 class="projects-settings-card-title">危险操作</h4>
-                                                    <p class="projects-settings-card-hint">归档后需在列表勾选「显示已归档」才能查看；删除将清除全部事实且不可恢复。</p>
+                                                    <h4 class="projects-settings-card-title" data-i18n="projects.dangerZoneTitle">危险操作</h4>
+                                                    <p class="projects-settings-card-hint" data-i18n="projects.dangerZoneHint">归档后需在列表勾选「显示已归档」才能查看；删除将清除全部事实且不可恢复。</p>
                                                 </div>
                                             </div>
                                             <div class="projects-settings-danger-actions">
-                                                <button class="btn-secondary btn-small" type="button" onclick="archiveCurrentProject()">归档 / 恢复</button>
-                                                <button class="btn-secondary btn-small btn-danger-outline" type="button" onclick="deleteCurrentProject()">删除项目</button>
+                                                <button class="btn-secondary btn-small" type="button" onclick="archiveCurrentProject()" data-i18n="projects.archiveRestore">归档 / 恢复</button>
+                                                <button class="btn-secondary btn-small btn-danger-outline" type="button" onclick="deleteCurrentProject()" data-i18n="projects.deleteProject">删除项目</button>
                                             </div>
                                         </section>
                                     </div>
                                     <footer class="projects-settings-footer">
-                                        <span class="projects-settings-footer-hint">修改后请点击保存以同步到服务器</span>
+                                        <span class="projects-settings-footer-hint" data-i18n="projects.saveChangesHint">修改后请点击保存以同步到服务器</span>
                                         <button class="btn-primary" type="button" onclick="saveProjectSettings()">
                                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-                                            保存更改
+                                            <span data-i18n="projects.saveSettings">保存更改</span>
                                         </button>
                                     </footer>
                                 </div>
@@ -4021,25 +4021,25 @@
             <div class="projects-modal-header">
                 <div class="projects-modal-header-text">
                     <div>
-                        <h3 id="project-modal-title">新建项目</h3>
-                        <p id="project-modal-subtitle" class="projects-modal-subtitle">创建后可绑定对话，跨会话共享事实黑板</p>
+                        <h3 id="project-modal-title" data-i18n="projects.modalNewTitle">新建项目</h3>
+                        <p id="project-modal-subtitle" class="projects-modal-subtitle" data-i18n="projects.modalNewSubtitle">创建后可绑定对话，跨会话共享事实黑板</p>
                     </div>
                 </div>
-                <button type="button" class="projects-modal-close" onclick="closeProjectModal()" aria-label="关闭">&times;</button>
+                <button type="button" class="projects-modal-close" onclick="closeProjectModal()" aria-label="关闭" data-i18n="common.close" data-i18n-attr="aria-label" data-i18n-skip-text="true">&times;</button>
             </div>
             <div class="projects-modal-body">
                 <div class="projects-form-field">
-                    <label for="project-modal-name">项目名称 <span class="required">*</span></label>
-                    <input type="text" id="project-modal-name" class="form-input" placeholder="例如：某客户 Web 渗透" autocomplete="off">
+                    <label for="project-modal-name" data-i18n="projects.projectName">项目名称 <span class="required">*</span></label>
+                    <input type="text" id="project-modal-name" class="form-input" placeholder="例如：某客户 Web 渗透" autocomplete="off" data-i18n="projects.projectNamePlaceholder" data-i18n-attr="placeholder">
                 </div>
                 <div class="projects-form-field">
-                    <label for="project-modal-description">项目描述</label>
-                    <textarea id="project-modal-description" class="form-input" rows="4" placeholder="测试范围、授权边界、注意事项…"></textarea>
+                    <label for="project-modal-description" data-i18n="projects.projectDescription">项目描述</label>
+                    <textarea id="project-modal-description" class="form-input" rows="4" placeholder="测试范围、授权边界、注意事项…" data-i18n="projects.projectDescriptionPlaceholder" data-i18n-attr="placeholder"></textarea>
                 </div>
             </div>
             <div class="projects-modal-footer">
-                <button class="btn-secondary" type="button" onclick="closeProjectModal()">取消</button>
-                <button class="btn-primary" type="button" id="project-modal-submit-btn" onclick="saveProjectModal()">创建项目</button>
+                <button class="btn-secondary" type="button" onclick="closeProjectModal()" data-i18n="common.cancel">取消</button>
+                <button class="btn-primary" type="button" id="project-modal-submit-btn" onclick="saveProjectModal()" data-i18n="projects.createProject">创建项目</button>
             </div>
         </div>
     </div>
@@ -4048,11 +4048,11 @@
             <div class="projects-modal-header">
                 <div class="projects-modal-header-text">
                     <div>
-                        <h3 id="fact-modal-title">添加事实</h3>
-                        <p class="projects-modal-subtitle">摘要注入黑板索引；body 沉淀攻击链与 POC，供审计复现（与漏洞记录分工）</p>
+                        <h3 id="fact-modal-title" data-i18n="projects.addFact">添加事实</h3>
+                        <p class="projects-modal-subtitle" data-i18n="projects.factModalSubtitle">摘要注入黑板索引；body 沉淀攻击链与 POC，供审计复现（与漏洞记录分工）</p>
                     </div>
                 </div>
-                <button type="button" class="projects-modal-close" onclick="closeFactModal()" aria-label="关闭">&times;</button>
+                <button type="button" class="projects-modal-close" onclick="closeFactModal()" aria-label="关闭" data-i18n="common.close" data-i18n-attr="aria-label" data-i18n-skip-text="true">&times;</button>
             </div>
             <div class="projects-modal-body">
                 <div class="projects-form-field">
@@ -4062,7 +4062,7 @@
                 </div>
                 <div class="projects-form-row">
                     <div class="projects-form-field">
-                        <label for="fact-modal-category">分类</label>
+                        <label for="fact-modal-category" data-i18n="projects.category">分类</label>
                         <select id="fact-modal-category" class="form-input" onchange="updateFactFormHints()">
                             <option value="target">target（目标）</option>
                             <option value="auth">auth（认证）</option>
@@ -4076,7 +4076,7 @@
                         </select>
                     </div>
                     <div class="projects-form-field">
-                        <label for="fact-modal-confidence">置信度</label>
+                        <label for="fact-modal-confidence" data-i18n="projects.confidence">置信度</label>
                         <select id="fact-modal-confidence" class="form-input">
                             <option value="tentative">待确认</option>
                             <option value="confirmed">已确认</option>
@@ -4100,13 +4100,13 @@
                     <p id="fact-modal-body-hint" class="projects-field-hint" role="status"></p>
                 </div>
                 <div class="projects-form-field">
-                    <label for="fact-modal-related-vuln">关联漏洞 ID</label>
-                    <input type="text" id="fact-modal-related-vuln" class="form-input" placeholder="可选">
+                    <label for="fact-modal-related-vuln" data-i18n="projects.relatedVulnIdLabel">关联漏洞 ID</label>
+                    <input type="text" id="fact-modal-related-vuln" class="form-input" placeholder="可选" data-i18n="projects.optional" data-i18n-attr="placeholder">
                 </div>
             </div>
             <div class="projects-modal-footer">
-                <button class="btn-secondary" type="button" onclick="closeFactModal()">取消</button>
-                <button class="btn-primary" type="button" id="fact-modal-submit-btn" onclick="saveFactModal()">保存事实</button>
+                <button class="btn-secondary" type="button" onclick="closeFactModal()" data-i18n="common.cancel">取消</button>
+                <button class="btn-primary" type="button" id="fact-modal-submit-btn" onclick="saveFactModal()" data-i18n="projects.saveFact">保存事实</button>
             </div>
         </div>
     </div>
@@ -4115,30 +4115,30 @@
             <div class="projects-modal-header">
                 <div class="projects-modal-header-text">
                     <div>
-                        <h3 id="fact-detail-title">事实详情</h3>
+                        <h3 id="fact-detail-title" data-i18n="projects.factDetails">事实详情</h3>
                         <p id="fact-detail-meta" class="projects-modal-subtitle"></p>
                     </div>
                 </div>
-                <button type="button" class="projects-modal-close" onclick="closeFactDetailModal()" aria-label="关闭">&times;</button>
+                <button type="button" class="projects-modal-close" onclick="closeFactDetailModal()" aria-label="关闭" data-i18n="common.close" data-i18n-attr="aria-label" data-i18n-skip-text="true">&times;</button>
             </div>
             <div class="projects-modal-body">
                 <p id="fact-detail-sparse-warn" class="projects-fact-sparse-warn" hidden></p>
                 <div id="fact-detail-prev-wrap" class="fact-detail-prev-wrap" hidden>
-                    <h4 class="fact-detail-prev-title">上一版本</h4>
+                    <h4 class="fact-detail-prev-title" data-i18n="projects.previousVersion">上一版本</h4>
                     <p id="fact-detail-prev-meta" class="projects-modal-subtitle"></p>
                     <pre id="fact-detail-prev-body" class="fact-detail-body fact-detail-body--muted"></pre>
                 </div>
-                <h4 class="fact-detail-current-title">当前版本</h4>
+                <h4 class="fact-detail-current-title" data-i18n="projects.currentVersion">当前版本</h4>
                 <pre id="fact-detail-body" class="fact-detail-body"></pre>
             </div>
             <div class="projects-modal-footer projects-modal-footer--split">
                 <div class="projects-modal-footer-left">
-                    <button class="btn-secondary btn-small" type="button" id="fact-detail-link-vuln-btn" onclick="linkFactToExistingVulnerability()" hidden>关联漏洞</button>
-                    <button class="btn-secondary btn-small" type="button" id="fact-detail-create-vuln-btn" onclick="createVulnerabilityFromCurrentFact()" hidden>生成漏洞草稿</button>
+                    <button class="btn-secondary btn-small" type="button" id="fact-detail-link-vuln-btn" onclick="linkFactToExistingVulnerability()" hidden data-i18n="projects.linkVulnerability">关联漏洞</button>
+                    <button class="btn-secondary btn-small" type="button" id="fact-detail-create-vuln-btn" onclick="createVulnerabilityFromCurrentFact()" hidden data-i18n="projects.createVulnerabilityDraft">生成漏洞草稿</button>
                 </div>
                 <div class="projects-modal-footer-right">
-                    <button class="btn-secondary" type="button" onclick="closeFactDetailModal()">关闭</button>
-                    <button class="btn-primary" type="button" id="fact-detail-edit-btn" onclick="editFactFromDetail()">编辑</button>
+                    <button class="btn-secondary" type="button" onclick="closeFactDetailModal()" data-i18n="common.close">关闭</button>
+                    <button class="btn-primary" type="button" id="fact-detail-edit-btn" onclick="editFactFromDetail()" data-i18n="common.edit">编辑</button>
                 </div>
             </div>
         </div>

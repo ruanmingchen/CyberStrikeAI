@@ -11,6 +11,17 @@ let _projectsFetchPromise = null;
 
 const PROJECT_ACTIVE_KEY = 'cyberstrike.activeProjectId';
 
+function tp(key, opts) {
+    if (typeof window.t === 'function') return window.t(key, opts);
+    return key;
+}
+
+function tpFmt(key, fallback, opts) {
+    const text = tp(key, opts);
+    if (!text || text === key) return fallback;
+    return text;
+}
+
 /** 与后端 internal/project/fact_template.go 对齐 */
 const FACT_ATTACK_CHAIN_BODY_TEMPLATE = `## 结论（可验证，一句话）
 <勿仅写「存在漏洞」；写明类型 + 位置 + 触发条件>
@@ -98,12 +109,12 @@ function isSparseFactBody(category, factKey, body) {
 function formatFactBodyBadge(f) {
     if (!requiresAttackChainFact(f.category, f.fact_key)) {
         const hasBody = !!(f.body || '').trim();
-        return `<span class="projects-fact-badge projects-fact-badge--na" title="环境类事实">${hasBody ? '有详情' : '—'}</span>`;
+        return `<span class="projects-fact-badge projects-fact-badge--na" title="${escapeHtml(tp('projects.factBodyEnvTitle'))}">${hasBody ? escapeHtml(tp('projects.factBodyHasDetail')) : '—'}</span>`;
     }
     if (isSparseFactBody(f.category, f.fact_key, f.body)) {
-        return '<span class="projects-fact-badge projects-fact-badge--warn" title="缺少攻击链/POC 结构">待补全</span>';
+        return `<span class="projects-fact-badge projects-fact-badge--warn" title="${escapeHtml(tp('projects.factBodySparseTitle'))}">${escapeHtml(tp('projects.factBodySparse'))}</span>`;
     }
-    return '<span class="projects-fact-badge projects-fact-badge--ok" title="含可复现结构">可复现</span>';
+    return `<span class="projects-fact-badge projects-fact-badge--ok" title="${escapeHtml(tp('projects.factBodyReproducibleTitle'))}">${escapeHtml(tp('projects.factBodyReproducible'))}</span>`;
 }
 
 function updateFactFormHints() {
@@ -115,11 +126,11 @@ function updateFactFormHints() {
     if (requiresAttackChainFact(cat, key)) {
         const sparse = isSparseFactBody(cat, key, body);
         hint.textContent = sparse
-            ? '⚠ 攻击链类事实：请填写完整 body（步骤、HTTP/命令、响应现象），勿仅写结论。可点「插入攻击链模板」。'
-            : '攻击链类：body 将用于审计复现，请保留原始请求/响应与逐步步骤。';
+            ? tp('projects.factHintAttackSparse')
+            : tp('projects.factHintAttackReady');
         hint.classList.toggle('projects-field-hint--warn', sparse);
     } else {
-        hint.textContent = '环境认知类：body 建议记录来源证据；发现/利用请改用 finding|chain|exploit|poc 分类。';
+        hint.textContent = tp('projects.factHintEnv');
         hint.classList.remove('projects-field-hint--warn');
     }
 }
@@ -128,7 +139,7 @@ function insertFactBodyTemplate(kind) {
     const ta = document.getElementById('fact-modal-body');
     if (!ta) return;
     const tpl = kind === 'env' ? FACT_ENV_BODY_TEMPLATE : FACT_ATTACK_CHAIN_BODY_TEMPLATE;
-    if (ta.value.trim() && !confirm('将覆盖当前 body 内容为模板，是否继续？')) return;
+    if (ta.value.trim() && !confirm(tp('projects.confirmOverwriteBodyTemplate'))) return;
     ta.value = tpl;
     updateFactFormHints();
     ta.focus();
@@ -160,7 +171,7 @@ async function fetchProjectsList(includeArchived) {
     const showArchived = includeArchived || document.getElementById('projects-show-archived')?.checked;
     const url = showArchived ? '/api/projects?limit=200' : '/api/projects?status=active&limit=200';
     const res = await apiFetch(url);
-    if (!res.ok) throw new Error('加载项目失败');
+    if (!res.ok) throw new Error(tp('projects.loadProjectsFailed'));
     const data = await res.json();
     projectsCache = Array.isArray(data) ? data : [];
     rebuildProjectNameMap(projectsCache);
@@ -295,12 +306,12 @@ function formatConfidenceBadge(confidence) {
     let label = c || '—';
     if (c === 'confirmed') {
         cls = 'projects-confidence--confirmed';
-        label = '已确认';
+        label = tp('projects.confidenceConfirmed');
     } else if (c === 'deprecated') {
         cls = 'projects-confidence--deprecated';
-        label = '已废弃';
+        label = tp('projects.confidenceDeprecated');
     } else if (c === 'tentative') {
-        label = '待确认';
+        label = tp('projects.confidenceTentative');
     }
     return `<span class="projects-confidence ${cls}">${escapeHtml(label)}</span>`;
 }
@@ -308,13 +319,13 @@ function formatConfidenceBadge(confidence) {
 function renderProjectFactActions(keyEsc, idEsc, confidence) {
     const isDeprecated = (confidence || '').toLowerCase() === 'deprecated';
     const toggleBtn = isDeprecated
-        ? `<button type="button" class="projects-action-btn projects-action-btn--restore" data-fact-key="${keyEsc}" onclick="restoreProjectFactByKey(this.dataset.factKey)" title="恢复为待确认并重新进入黑板索引">恢复</button>`
-        : `<button type="button" class="projects-action-btn projects-action-btn--mute" data-fact-key="${keyEsc}" onclick="deprecateProjectFactByKey(this.dataset.factKey)" title="标记为已废弃">废弃</button>`;
+        ? `<button type="button" class="projects-action-btn projects-action-btn--restore" data-fact-key="${keyEsc}" onclick="restoreProjectFactByKey(this.dataset.factKey)" title="${escapeHtml(tp('projects.restoreTitle'))}">${escapeHtml(tp('projects.restore'))}</button>`
+        : `<button type="button" class="projects-action-btn projects-action-btn--mute" data-fact-key="${keyEsc}" onclick="deprecateProjectFactByKey(this.dataset.factKey)" title="${escapeHtml(tp('projects.deprecateTitle'))}">${escapeHtml(tp('projects.deprecate'))}</button>`;
     return `<div class="projects-table-actions">
-        <button type="button" class="projects-action-btn projects-action-btn--edit" data-fact-key="${keyEsc}" onclick="showEditFactModal(this.dataset.factKey)" title="编辑各字段">编辑</button>
-        <button type="button" class="projects-action-btn projects-action-btn--view" data-fact-key="${keyEsc}" onclick="viewProjectFactBody(this.dataset.factKey)" title="查看完整 body">详情</button>
+        <button type="button" class="projects-action-btn projects-action-btn--edit" data-fact-key="${keyEsc}" onclick="showEditFactModal(this.dataset.factKey)" title="${escapeHtml(tp('projects.editTitle'))}">${escapeHtml(tp('common.edit'))}</button>
+        <button type="button" class="projects-action-btn projects-action-btn--view" data-fact-key="${keyEsc}" onclick="viewProjectFactBody(this.dataset.factKey)" title="${escapeHtml(tp('projects.viewBodyTitle'))}">${escapeHtml(tp('projects.details'))}</button>
         ${toggleBtn}
-        <button type="button" class="projects-action-btn projects-action-btn--danger" data-fact-id="${idEsc}" onclick="deleteProjectFact(this.dataset.factId)" title="永久删除">删除</button>
+        <button type="button" class="projects-action-btn projects-action-btn--danger" data-fact-id="${idEsc}" onclick="deleteProjectFact(this.dataset.factId)" title="${escapeHtml(tp('projects.deleteForeverTitle'))}">${escapeHtml(tp('common.delete'))}</button>
     </div>`;
 }
 
@@ -342,12 +353,12 @@ function renderProjectsSidebar() {
         : projectsCache;
     if (!projectsCache.length) {
         el.innerHTML =
-            '<div class="projects-empty">暂无项目<br><button type="button" class="btn-primary btn-small projects-empty-btn" onclick="showNewProjectModal()">新建项目</button></div>';
+            `<div class="projects-empty">${escapeHtml(tp('projects.noProjects'))}<br><button type="button" class="btn-primary btn-small projects-empty-btn" onclick="showNewProjectModal()">${escapeHtml(tp('projects.newProject'))}</button></div>`;
         updateProjectsDetailVisibility();
         return;
     }
     if (!list.length) {
-        el.innerHTML = '<div class="projects-empty">无匹配项目</div>';
+        el.innerHTML = `<div class="projects-empty">${escapeHtml(tp('projects.noMatchingProjects'))}</div>`;
         updateProjectsDetailVisibility();
         return;
     }
@@ -355,8 +366,8 @@ function renderProjectsSidebar() {
         const active = p.id === currentProjectId ? ' is-active' : '';
         const archived = p.status === 'archived' ? ' is-archived' : '';
         const badges = [
-            p.pinned ? '<span class="projects-list-item-badge">置顶</span>' : '',
-            p.status === 'archived' ? '<span class="projects-list-item-badge">归档</span>' : '',
+            p.pinned ? `<span class="projects-list-item-badge">${escapeHtml(tp('projects.pinned'))}</span>` : '',
+            p.status === 'archived' ? `<span class="projects-list-item-badge">${escapeHtml(tp('projects.archived'))}</span>` : '',
         ].join('');
         return `<div class="projects-list-item${active}${archived}" data-id="${escapeHtml(p.id)}" onclick="selectProject('${escapeHtml(p.id)}')">
             <div class="projects-list-item-body">
@@ -372,7 +383,7 @@ function updateProjectStatusPill(status) {
     const el = document.getElementById('projects-detail-status');
     if (!el) return;
     const archived = status === 'archived';
-    el.textContent = archived ? '已归档' : '进行中';
+    el.textContent = archived ? tp('projects.statusArchived') : tp('projects.statusActive');
     el.className = 'projects-status-pill ' + (archived ? 'projects-status-pill--archived' : 'projects-status-pill--active');
 }
 
@@ -386,13 +397,13 @@ function updateProjectStats(stats) {
     const vc = s.vuln_count ?? s.vulnCount ?? 0;
     const cc = s.conversation_count ?? s.conversationCount ?? 0;
     const sc = s.sparse_fact_count ?? s.sparseFactCount ?? 0;
-    if (f) f.textContent = `${fc} 条事实`;
-    if (v) v.textContent = `${vc} 个漏洞`;
-    if (c) c.textContent = `${cc} 个对话`;
+    if (f) f.textContent = tpFmt('projects.statsFacts', `${fc} facts`, { count: fc });
+    if (v) v.textContent = tpFmt('projects.statsVulns', `${vc} vulnerabilities`, { count: vc });
+    if (c) c.textContent = tpFmt('projects.statsConversations', `${cc} conversations`, { count: cc });
     if (sparse) {
         if (sc > 0) {
             sparse.hidden = false;
-            sparse.textContent = `${sc} 待补全`;
+            sparse.textContent = tpFmt('projects.statsSparse', `${sc} to complete`, { count: sc });
         } else {
             sparse.hidden = true;
         }
@@ -413,10 +424,10 @@ async function selectProject(id) {
     updateProjectsDetailVisibility();
     try {
         const res = await apiFetch(`/api/projects/${id}`);
-        if (!res.ok) throw new Error('项目不存在');
+        if (!res.ok) throw new Error(tp('projects.projectNotFound'));
         const p = await res.json();
         const titleEl = document.getElementById('projects-detail-title');
-        if (titleEl) titleEl.textContent = p.name || '项目';
+        if (titleEl) titleEl.textContent = p.name || tp('projects.defaultProjectName');
         document.getElementById('project-edit-name').value = p.name || '';
         document.getElementById('project-edit-description').value = p.description || '';
         document.getElementById('project-edit-scope').value = p.scope_json || '';
@@ -426,7 +437,7 @@ async function selectProject(id) {
         if (pinEl) pinEl.checked = !!p.pinned;
         updateProjectStatusPill(p.status || 'active');
         const metaEl = document.getElementById('projects-detail-meta');
-        if (metaEl) metaEl.textContent = `更新于 ${formatProjectTime(p.updated_at)}`;
+        if (metaEl) metaEl.textContent = tpFmt('projects.updatedPrefix', `Updated ${formatProjectTime(p.updated_at)}`, { time: formatProjectTime(p.updated_at) });
         const descEl = document.getElementById('projects-detail-desc');
         if (descEl) {
             const desc = (p.description || '').trim();
@@ -486,11 +497,11 @@ function debouncedLoadProjectFacts() {
 async function loadProjectFacts() {
     const tbody = document.getElementById('project-facts-tbody');
     if (!tbody || !currentProjectId) return;
-    tbody.innerHTML = '<tr class="is-empty-row"><td colspan="7">加载中…</td></tr>';
+    tbody.innerHTML = `<tr class="is-empty-row"><td colspan="7">${escapeHtml(tp('common.loading'))}</td></tr>`;
     const qs = buildProjectFactsQueryParams().toString();
     const res = await apiFetch(`/api/projects/${currentProjectId}/facts?${qs}`);
     if (!res.ok) {
-        tbody.innerHTML = '<tr class="is-empty-row"><td colspan="7">加载失败</td></tr>';
+        tbody.innerHTML = `<tr class="is-empty-row"><td colspan="7">${escapeHtml(tp('common.loadFailed'))}</td></tr>`;
         return;
     }
     const facts = await res.json();
@@ -501,7 +512,7 @@ async function loadProjectFacts() {
             document.getElementById('project-facts-filter-confidence')?.value ||
             document.getElementById('project-facts-filter-sparse')?.checked;
         tbody.innerHTML = `<tr class="is-empty-row"><td colspan="7">${
-            hasFilter ? '无匹配事实，请调整筛选条件' : '暂无事实，点击「添加事实」或由 Agent 自动写入'
+            hasFilter ? tp('projects.noMatchingFacts') : tp('projects.noFacts')
         }</td></tr>`;
         refreshProjectHeaderStats();
         return;
@@ -510,7 +521,7 @@ async function loadProjectFacts() {
         const keyEsc = escapeHtml(f.fact_key);
         const idEsc = escapeHtml(f.id);
         const vulnLink = f.related_vulnerability_id
-            ? `<span class="projects-fact-vuln-link" title="关联漏洞 ID">${escapeHtml(f.related_vulnerability_id.slice(0, 8))}…</span>`
+            ? `<span class="projects-fact-vuln-link" title="${escapeHtml(tp('projects.relatedVulnIdTitle'))}">${escapeHtml(f.related_vulnerability_id.slice(0, 8))}…</span>`
             : '';
         return `<tr>
             <td><code>${keyEsc}</code>${vulnLink}</td>
@@ -540,32 +551,31 @@ async function refreshProjectHeaderStats() {
 async function loadProjectConversations() {
     const tbody = document.getElementById('project-conversations-tbody');
     if (!tbody || !currentProjectId) return;
-    tbody.innerHTML = '<tr class="is-empty-row"><td colspan="3">加载中…</td></tr>';
+    tbody.innerHTML = `<tr class="is-empty-row"><td colspan="3">${escapeHtml(tp('common.loading'))}</td></tr>`;
     const res = await apiFetch(`/api/projects/${currentProjectId}/conversations?limit=100`);
     if (!res.ok) {
-        tbody.innerHTML = '<tr class="is-empty-row"><td colspan="3">加载失败</td></tr>';
+        tbody.innerHTML = `<tr class="is-empty-row"><td colspan="3">${escapeHtml(tp('common.loadFailed'))}</td></tr>`;
         return;
     }
     const data = await res.json();
     const items = data.conversations || [];
     if (!items.length) {
-        tbody.innerHTML =
-            '<tr class="is-empty-row"><td colspan="3">暂无绑定对话；在对话页选择本项目即可关联</td></tr>';
+        tbody.innerHTML = `<tr class="is-empty-row"><td colspan="3">${escapeHtml(tp('projects.noBoundConversations'))}</td></tr>`;
         return;
     }
     tbody.innerHTML = items
         .map((conv) => {
             const id = conv.id;
             const idEsc = escapeHtml(id);
-            const title = escapeHtml(conv.title || '未命名对话');
+            const title = escapeHtml(conv.title || tp('projects.untitledConversation'));
             const updated = formatProjectTime(conv.updatedAt || conv.updated_at, conv.createdAt || conv.created_at);
             return `<tr>
             <td class="cell-summary" title="${title}">${title}</td>
             <td>${escapeHtml(updated)}</td>
             <td class="col-actions">
                 <div class="projects-table-actions">
-                    <button type="button" class="projects-action-btn projects-action-btn--view" data-conv-id="${idEsc}" onclick="openProjectConversation(this.dataset.convId)">打开</button>
-                    <button type="button" class="projects-action-btn projects-action-btn--mute" data-conv-id="${idEsc}" onclick="unbindConversationFromProject(this.dataset.convId)" title="解除项目绑定">解绑</button>
+                    <button type="button" class="projects-action-btn projects-action-btn--view" data-conv-id="${idEsc}" onclick="openProjectConversation(this.dataset.convId)">${escapeHtml(tp('projects.open'))}</button>
+                    <button type="button" class="projects-action-btn projects-action-btn--mute" data-conv-id="${idEsc}" onclick="unbindConversationFromProject(this.dataset.convId)" title="${escapeHtml(tp('projects.unbindProjectTitle'))}">${escapeHtml(tp('projects.unbind'))}</button>
                 </div>
             </td>
         </tr>`;
@@ -586,13 +596,13 @@ function openProjectConversation(conversationId) {
 }
 
 async function unbindConversationFromProject(conversationId) {
-    if (!conversationId || !confirm('解除该对话与当前项目的绑定？')) return;
+    if (!conversationId || !confirm(tp('projects.confirmUnbindConversation'))) return;
     const res = await apiFetch(`/api/conversations/${encodeURIComponent(conversationId)}/project`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ projectId: '' }),
     });
-    if (!res.ok) return alert('解绑失败');
+    if (!res.ok) return alert(tp('projects.unbindFailed'));
     loadProjectConversations();
     refreshProjectHeaderStats();
 }
@@ -603,27 +613,28 @@ let _projectFactsFilterDebounce = null;
 
 async function viewProjectFactBody(factKey) {
     const res = await apiFetch(`/api/projects/${currentProjectId}/facts?fact_key=${encodeURIComponent(factKey)}`);
-    if (!res.ok) return alert('加载失败');
+    if (!res.ok) return alert(tp('common.loadFailed'));
     const f = await res.json();
     _factDetailKey = f.fact_key;
     _factDetailFact = f;
     document.getElementById('fact-detail-title').textContent = `[${f.fact_key}]`;
     const metaParts = [
-        `分类: ${f.category}`,
-        `置信度: ${f.confidence}`,
-        `更新: ${formatProjectTime(f.updated_at, f.created_at)}`,
+        tpFmt('projects.factMetaCategory', `Category: ${f.category}`, { value: f.category }),
+        tpFmt('projects.factMetaConfidence', `Confidence: ${f.confidence}`, { value: f.confidence }),
+        tpFmt('projects.factMetaUpdated', `Updated: ${formatProjectTime(f.updated_at, f.created_at)}`, {
+            time: formatProjectTime(f.updated_at, f.created_at),
+        }),
     ];
-    if (f.related_vulnerability_id) metaParts.push(`关联漏洞: ${f.related_vulnerability_id}`);
-    if (f.source_conversation_id) metaParts.push(`来源对话: ${f.source_conversation_id}`);
-    if (f.supersedes_fact_id) metaParts.push('含上一版本');
+    if (f.related_vulnerability_id) metaParts.push(tpFmt('projects.factMetaRelatedVuln', `Related vulnerability: ${f.related_vulnerability_id}`, { value: f.related_vulnerability_id }));
+    if (f.source_conversation_id) metaParts.push(tpFmt('projects.factMetaSourceConversation', `Source conversation: ${f.source_conversation_id}`, { value: f.source_conversation_id }));
+    if (f.supersedes_fact_id) metaParts.push(tp('projects.factMetaHasPrevious'));
     document.getElementById('fact-detail-meta').textContent = metaParts.join(' · ');
-    document.getElementById('fact-detail-body').textContent = f.body || '(无 body)';
+    document.getElementById('fact-detail-body').textContent = f.body || tp('projects.emptyBody');
     const warnEl = document.getElementById('fact-detail-sparse-warn');
     if (warnEl) {
         if (isSparseFactBody(f.category, f.fact_key, f.body)) {
             warnEl.hidden = false;
-            warnEl.textContent =
-                '⚠ 该事实属于攻击链/利用类，但 body 缺少可复现结构（攻击链步骤、HTTP/命令、请求响应等）。建议编辑后补全以便审计复现。';
+            warnEl.textContent = tp('projects.factSparseWarn');
         } else {
             warnEl.hidden = true;
             warnEl.textContent = '';
@@ -640,9 +651,16 @@ async function viewProjectFactBody(factKey) {
                 if (prevRes.ok) {
                     const prev = await prevRes.json();
                     prevWrap.hidden = false;
-                    document.getElementById('fact-detail-prev-meta').textContent =
-                        `归档于 ${formatProjectTime(prev.archived_at)} · 摘要: ${prev.summary || '—'} · 置信度: ${prev.confidence || '—'}`;
-                    document.getElementById('fact-detail-prev-body').textContent = prev.body || '(无 body)';
+                    document.getElementById('fact-detail-prev-meta').textContent = tpFmt(
+                        'projects.factPreviousMeta',
+                        `Archived at ${formatProjectTime(prev.archived_at)} · Summary: ${prev.summary || '—'} · Confidence: ${prev.confidence || '—'}`,
+                        {
+                            time: formatProjectTime(prev.archived_at),
+                            summary: prev.summary || '—',
+                            confidence: prev.confidence || '—',
+                        },
+                    );
+                    document.getElementById('fact-detail-prev-body').textContent = prev.body || tp('projects.emptyBody');
                 }
             } catch (e) {
                 console.warn(e);
@@ -672,15 +690,15 @@ async function linkFactToExistingVulnerability() {
     const f = _factDetailFact;
     if (!f || !currentProjectId) return;
     const res = await apiFetch(`/api/vulnerabilities?project_id=${encodeURIComponent(currentProjectId)}&limit=50`);
-    if (!res.ok) return alert('加载漏洞列表失败');
+    if (!res.ok) return alert(tp('projects.loadVulnerabilityListFailed'));
     const data = await res.json();
     const items = data.Vulnerabilities || data.vulnerabilities || data.items || [];
-    if (!items.length) return alert('本项目暂无漏洞，请先创建或让 Agent 记录漏洞');
+    if (!items.length) return alert(tp('projects.noVulnerabilitiesInProject'));
     const lines = items.map((v, i) => `${i + 1}. [${v.severity}] ${v.title} (${v.id})`);
-    const pick = prompt(`输入序号以关联事实「${f.fact_key}」：\n\n${lines.join('\n')}`);
+    const pick = prompt(tpFmt('projects.promptLinkFactToVuln', `Enter index to link fact "${f.fact_key}":\n\n${lines.join('\n')}`, { factKey: f.fact_key, lines: lines.join('\n') }));
     if (pick == null || pick === '') return;
     const idx = parseInt(pick, 10) - 1;
-    if (Number.isNaN(idx) || idx < 0 || idx >= items.length) return alert('序号无效');
+    if (Number.isNaN(idx) || idx < 0 || idx >= items.length) return alert(tp('projects.invalidIndex'));
     const vulnId = items[idx].id;
     const upd = await apiFetch(`/api/projects/${currentProjectId}/facts/${encodeURIComponent(f.id)}`, {
         method: 'PUT',
@@ -694,8 +712,8 @@ async function linkFactToExistingVulnerability() {
             related_vulnerability_id: vulnId,
         }),
     });
-    if (!upd.ok) return alert('关联失败');
-    alert('已关联漏洞');
+    if (!upd.ok) return alert(tp('projects.linkFailed'));
+    alert(tp('projects.linkSuccess'));
     closeFactDetailModal();
     loadProjectFacts();
 }
@@ -707,15 +725,15 @@ async function createVulnerabilityFromCurrentFact() {
         (f.source_conversation_id || '').trim() ||
         (typeof window.currentConversationId === 'string' ? window.currentConversationId.trim() : '');
     if (!convId) {
-        convId = prompt('创建漏洞需要对话 ID（可与来源会话一致）：', '')?.trim() || '';
+        convId = prompt(tp('projects.promptConversationIdForVulnCreate'), '')?.trim() || '';
     }
-    if (!convId) return alert('已取消：未提供 conversation_id');
+    if (!convId) return alert(tp('projects.cancelledNoConversationId'));
     const severity = inferSeverityFromFact(f);
     const body = {
         conversation_id: convId,
         project_id: currentProjectId,
         title: (f.summary || f.fact_key).slice(0, 200),
-        description: `由项目事实 ${f.fact_key} 生成`,
+        description: tpFmt('projects.generatedFromFact', `Generated from project fact ${f.fact_key}`, { factKey: f.fact_key }),
         severity,
         status: 'open',
         type: f.category || 'finding',
@@ -731,7 +749,7 @@ async function createVulnerabilityFromCurrentFact() {
     });
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        return alert(err.error || '创建漏洞失败');
+        return alert(err.error || tp('projects.createVulnerabilityFailed'));
     }
     const vuln = await res.json();
     await apiFetch(`/api/projects/${currentProjectId}/facts/${encodeURIComponent(f.id)}`, {
@@ -746,7 +764,7 @@ async function createVulnerabilityFromCurrentFact() {
             related_vulnerability_id: vuln.id,
         }),
     });
-    alert(`已创建漏洞并关联：${vuln.title || vuln.id}`);
+    alert(tpFmt('projects.createVulnerabilityAndLinkSuccess', `Created and linked vulnerability: ${vuln.title || vuln.id}`, { value: vuln.title || vuln.id }));
     closeFactDetailModal();
     loadProjectFacts();
     if (currentProjectTab === 'vulns') loadProjectVulnerabilities();
@@ -761,18 +779,18 @@ function inferSeverityFromFact(f) {
 }
 
 async function deprecateProjectFactByKey(factKey) {
-    if (!confirm(`将事实 ${factKey} 标记为已废弃？`)) return;
+    if (!confirm(tpFmt('projects.confirmDeprecateFact', `Deprecate fact ${factKey}?`, { factKey }))) return;
     const res = await apiFetch(`/api/projects/${currentProjectId}/facts/deprecate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ fact_key: factKey }),
     });
-    if (!res.ok) return alert('操作失败');
+    if (!res.ok) return alert(tp('projects.operationFailed'));
     loadProjectFacts();
 }
 
 async function restoreProjectFactByKey(factKey) {
-    if (!confirm(`恢复事实 ${factKey}？将重新进入黑板索引（状态：待确认）。`)) return;
+    if (!confirm(tpFmt('projects.confirmRestoreFact', `Restore fact ${factKey}? It will re-enter the board index with tentative status.`, { factKey }))) return;
     const res = await apiFetch(`/api/projects/${currentProjectId}/facts/restore`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -780,7 +798,7 @@ async function restoreProjectFactByKey(factKey) {
     });
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        return alert(err.error || '操作失败');
+        return alert(err.error || tp('projects.operationFailed'));
     }
     loadProjectFacts();
 }
@@ -801,16 +819,16 @@ function openVulnerabilitiesForProject(projectId) {
 async function loadProjectVulnerabilities() {
     const tbody = document.getElementById('project-vulns-tbody');
     if (!tbody || !currentProjectId) return;
-    tbody.innerHTML = '<tr class="is-empty-row"><td colspan="4">加载中…</td></tr>';
+    tbody.innerHTML = `<tr class="is-empty-row"><td colspan="4">${escapeHtml(tp('common.loading'))}</td></tr>`;
     const res = await apiFetch(`/api/vulnerabilities?project_id=${encodeURIComponent(currentProjectId)}&limit=100`);
     if (!res.ok) {
-        tbody.innerHTML = '<tr class="is-empty-row"><td colspan="4">加载失败</td></tr>';
+        tbody.innerHTML = `<tr class="is-empty-row"><td colspan="4">${escapeHtml(tp('common.loadFailed'))}</td></tr>`;
         return;
     }
     const data = await res.json();
     const items = data.Vulnerabilities || data.vulnerabilities || data.items || [];
     if (!items.length) {
-        tbody.innerHTML = '<tr class="is-empty-row"><td colspan="4">本项目暂无漏洞记录</td></tr>';
+        tbody.innerHTML = `<tr class="is-empty-row"><td colspan="4">${escapeHtml(tp('projects.noVulnerabilityRecords'))}</td></tr>`;
         refreshProjectHeaderStats();
         return;
     }
@@ -822,8 +840,8 @@ async function loadProjectVulnerabilities() {
             <td>${escapeHtml(v.status)}</td>
             <td class="col-actions">
                 <div class="projects-table-actions">
-                    <button type="button" class="projects-action-btn projects-action-btn--view" data-vuln-id="${idEsc}" onclick="openVulnerabilityDetail(this.dataset.vulnId)">查看</button>
-                    <button type="button" class="projects-action-btn projects-action-btn--view" data-vuln-id="${idEsc}" onclick="viewFactsForVulnerability(this.dataset.vulnId)" title="查看关联事实">事实</button>
+                    <button type="button" class="projects-action-btn projects-action-btn--view" data-vuln-id="${idEsc}" onclick="openVulnerabilityDetail(this.dataset.vulnId)">${escapeHtml(tp('common.view'))}</button>
+                    <button type="button" class="projects-action-btn projects-action-btn--view" data-vuln-id="${idEsc}" onclick="viewFactsForVulnerability(this.dataset.vulnId)" title="${escapeHtml(tp('projects.viewRelatedFactsTitle'))}">${escapeHtml(tp('projects.facts'))}</button>
                 </div>
             </td>
         </tr>`;
@@ -853,10 +871,10 @@ async function viewFactsForVulnerability(vulnId) {
     if (hideDepEl) hideDepEl.checked = true;
     const params = new URLSearchParams({ limit: '50', related_vulnerability_id: vulnId });
     const res = await apiFetch(`/api/projects/${currentProjectId}/facts?${params}`);
-    if (!res.ok) return alert('加载关联事实失败');
+    if (!res.ok) return alert(tp('projects.loadRelatedFactsFailed'));
     const facts = await res.json();
     if (!facts.length) {
-        alert('该漏洞暂无关联事实，可在事实详情中「关联漏洞」或「生成漏洞草稿」建立链接');
+        alert(tp('projects.noFactsForVulnerability'));
         loadProjectFacts();
         return;
     }
@@ -865,7 +883,11 @@ async function viewFactsForVulnerability(vulnId) {
         return;
     }
     const pick = prompt(
-        `该漏洞关联 ${facts.length} 条事实，输入序号查看：\n${facts.map((f, i) => `${i + 1}. ${f.fact_key}`).join('\n')}`,
+        tpFmt(
+            'projects.promptChooseFactByIndex',
+            `This vulnerability is linked to ${facts.length} facts. Enter index to view:\n${facts.map((f, i) => `${i + 1}. ${f.fact_key}`).join('\n')}`,
+            { count: facts.length, lines: facts.map((f, i) => `${i + 1}. ${f.fact_key}`).join('\n') },
+        ),
     );
     if (pick == null || pick === '') {
         loadProjectFacts();
@@ -895,11 +917,11 @@ function closeProjectsOverlay(id) {
 }
 
 function showNewProjectModal() {
-    document.getElementById('project-modal-title').textContent = '新建项目';
+    document.getElementById('project-modal-title').textContent = tp('projects.modalNewTitle');
     const sub = document.getElementById('project-modal-subtitle');
-    if (sub) sub.textContent = '创建后可绑定对话，跨会话共享事实黑板';
+    if (sub) sub.textContent = tp('projects.modalNewSubtitle');
     const submitBtn = document.getElementById('project-modal-submit-btn');
-    if (submitBtn) submitBtn.textContent = '创建项目';
+    if (submitBtn) submitBtn.textContent = tp('projects.createProject');
     document.getElementById('project-modal-name').value = '';
     document.getElementById('project-modal-description').value = '';
     window._projectModalEditId = null;
@@ -915,7 +937,7 @@ function showNewProjectModalFromChat() {
 
 async function saveProjectModal() {
     const name = document.getElementById('project-modal-name').value.trim();
-    if (!name) return alert('请输入项目名称');
+    if (!name) return alert(tp('projects.enterProjectName'));
     const body = {
         name,
         description: document.getElementById('project-modal-description').value.trim(),
@@ -926,7 +948,7 @@ async function saveProjectModal() {
         : await apiFetch('/api/projects', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        alert(err.error || '保存失败');
+        alert(err.error || tp('projects.saveFailed'));
         return;
     }
     const fromChat = !!window._projectModalFromChat;
@@ -956,7 +978,7 @@ function formatProjectScopeJson() {
     try {
         el.value = JSON.stringify(JSON.parse(raw), null, 2);
     } catch (e) {
-        alert('JSON 格式无效：' + (e.message || String(e)));
+        alert(tp('projects.invalidJson') + ': ' + (e.message || String(e)));
     }
 }
 
@@ -966,7 +988,7 @@ function insertProjectScopeExample() {
     const example = {
         targets: ['https://example.com'],
         exclude: ['*.cdn.example.com'],
-        notes: '仅授权 Web 应用层测试',
+        notes: tp('projects.scopeNoteAuthorizedWebOnly'),
     };
     el.value = JSON.stringify(example, null, 2);
     el.focus();
@@ -979,7 +1001,7 @@ async function saveProjectSettings() {
         try {
             JSON.parse(scopeRaw);
         } catch (e) {
-            alert('测试范围 JSON 无效，请先修正或点击「格式化」：' + (e.message || String(e)));
+            alert(tp('projects.invalidScopeJson') + ': ' + (e.message || String(e)));
             return;
         }
     }
@@ -995,10 +1017,10 @@ async function saveProjectSettings() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
     });
-    if (!res.ok) return alert('保存失败');
+    if (!res.ok) return alert(tp('projects.saveFailed'));
     await loadProjectsList();
     await selectProject(currentProjectId);
-    alert('已保存');
+    alert(tp('projects.saved'));
 }
 
 async function archiveCurrentProject() {
@@ -1006,23 +1028,23 @@ async function archiveCurrentProject() {
     const statusEl = document.getElementById('project-edit-status');
     const cur = statusEl?.value || 'active';
     const next = cur === 'archived' ? 'active' : 'archived';
-    if (!confirm(next === 'archived' ? '归档后默认不再出现在活跃列表，是否继续？' : '恢复为 active？')) return;
+    if (!confirm(next === 'archived' ? tp('projects.confirmArchiveProject') : tp('projects.confirmRestoreProjectActive'))) return;
     const res = await apiFetch(`/api/projects/${currentProjectId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: next }),
     });
-    if (!res.ok) return alert('操作失败');
+    if (!res.ok) return alert(tp('projects.operationFailed'));
     await loadProjectsList();
     await selectProject(currentProjectId);
 }
 
 async function deleteCurrentProject() {
-    if (!currentProjectId || !confirm('确定删除该项目？事实将一并删除，对话将解除绑定。')) return;
+    if (!currentProjectId || !confirm(tp('projects.confirmDeleteProject'))) return;
     const deletedId = currentProjectId;
     const deletedIndex = projectsCache.findIndex((p) => p.id === deletedId);
     const res = await apiFetch(`/api/projects/${deletedId}`, { method: 'DELETE' });
-    if (!res.ok) return alert('删除失败');
+    if (!res.ok) return alert(tp('projects.deleteFailed'));
     if (getActiveProjectId() === deletedId) setActiveProjectId('');
     currentProjectId = null;
     await loadProjectsList();
@@ -1038,8 +1060,8 @@ function resetFactModalForm() {
     window._factModalEditId = null;
     const keyEl = document.getElementById('fact-modal-key');
     if (keyEl) keyEl.disabled = false;
-    document.getElementById('fact-modal-title').textContent = '添加事实';
-    document.getElementById('fact-modal-submit-btn').textContent = '保存事实';
+    document.getElementById('fact-modal-title').textContent = tp('projects.addFact');
+    document.getElementById('fact-modal-submit-btn').textContent = tp('projects.saveFact');
     document.getElementById('fact-modal-key').value = '';
     document.getElementById('fact-modal-category').value = 'note';
     document.getElementById('fact-modal-summary').value = '';
@@ -1052,8 +1074,8 @@ function resetFactModalForm() {
 
 function fillFactModalForm(f) {
     window._factModalEditId = f.id;
-    document.getElementById('fact-modal-title').textContent = '编辑事实';
-    document.getElementById('fact-modal-submit-btn').textContent = '保存修改';
+    document.getElementById('fact-modal-title').textContent = tp('projects.editFact');
+    document.getElementById('fact-modal-submit-btn').textContent = tp('projects.saveChanges');
     document.getElementById('fact-modal-key').value = f.fact_key || '';
     const catEl = document.getElementById('fact-modal-category');
     const cat = (f.category || 'note').trim().toLowerCase();
@@ -1063,7 +1085,7 @@ function fillFactModalForm(f) {
         else {
             const opt = document.createElement('option');
             opt.value = f.category;
-            opt.textContent = `${f.category}（自定义）`;
+            opt.textContent = tpFmt('projects.customCategoryOption', `${f.category} (custom)`, { value: f.category });
             catEl.appendChild(opt);
             catEl.value = f.category;
         }
@@ -1082,17 +1104,17 @@ function fillFactModalForm(f) {
 }
 
 function showAddFactModal() {
-    if (!currentProjectId) return alert('请先选择项目');
+    if (!currentProjectId) return alert(tp('projects.selectProjectFirst'));
     resetFactModalForm();
     openProjectsOverlay('fact-modal');
 }
 
 async function showEditFactModal(factKey) {
-    if (!currentProjectId) return alert('请先选择项目');
+    if (!currentProjectId) return alert(tp('projects.selectProjectFirst'));
     const res = await apiFetch(
         `/api/projects/${currentProjectId}/facts?fact_key=${encodeURIComponent(factKey)}`,
     );
-    if (!res.ok) return alert('加载事实失败');
+    if (!res.ok) return alert(tp('projects.loadFactFailed'));
     const f = await res.json();
     resetFactModalForm();
     fillFactModalForm(f);
@@ -1109,10 +1131,10 @@ async function saveFactModal() {
     const summary = document.getElementById('fact-modal-summary').value.trim();
     const category = document.getElementById('fact-modal-category').value.trim() || 'note';
     const body = document.getElementById('fact-modal-body').value;
-    if (!fact_key || !summary) return alert('fact_key 与 summary 必填');
+    if (!fact_key || !summary) return alert(tp('projects.factKeySummaryRequired'));
     if (isSparseFactBody(category, fact_key, body)) {
         const ok = confirm(
-            '该事实属于攻击链/利用类，但 body 尚未包含可复现结构（步骤、HTTP/命令、请求响应等）。\n仍要保存吗？建议先插入攻击链模板并填写 POC。',
+            tp('projects.confirmSaveSparseFact'),
         );
         if (!ok) return;
     }
@@ -1138,14 +1160,14 @@ async function saveFactModal() {
           });
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        return alert(err.error || '保存失败');
+        return alert(err.error || tp('projects.saveFailed'));
     }
     closeFactModal();
     loadProjectFacts();
 }
 
 async function deleteProjectFact(id) {
-    if (!confirm('删除该事实？')) return;
+    if (!confirm(tp('projects.confirmDeleteFact'))) return;
     await apiFetch(`/api/projects/${currentProjectId}/facts/${id}`, { method: 'DELETE' });
     loadProjectFacts();
 }
@@ -1188,13 +1210,13 @@ function parseProjectDate(t) {
 
 function formatProjectTime(t, fallback) {
     const d = parseProjectDate(t) || (fallback != null ? parseProjectDate(fallback) : null);
-    if (!d) return '尚未更新';
+    if (!d) return tp('projects.notUpdatedYet');
     const now = Date.now();
     const diff = now - d.getTime();
-    if (diff < 60000) return '刚刚';
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
-    if (diff < 604800000) return `${Math.floor(diff / 86400000)} 天前`;
+    if (diff < 60000) return tp('common.justNow');
+    if (diff < 3600000) return tp('common.minutesAgo', { n: Math.floor(diff / 60000) });
+    if (diff < 86400000) return tp('common.hoursAgo', { n: Math.floor(diff / 3600000) });
+    if (diff < 604800000) return tp('common.daysAgo', { n: Math.floor(diff / 86400000) });
     return d.toLocaleString(undefined, { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
@@ -1249,7 +1271,7 @@ async function normalizeStaleChatProjectSelection() {
                         body: JSON.stringify({ projectId: '' }),
                     }
                 );
-                if (!res.ok) console.warn('清除失效的项目绑定失败');
+                if (!res.ok) console.warn(tp('projects.clearStaleProjectBindingFailed'));
             } catch (e) {
                 console.warn(e);
             }
@@ -1265,7 +1287,7 @@ function updateChatProjectButtonLabel() {
     const textEl = document.getElementById('chat-project-text');
     if (!textEl) return;
     const id = resolveChatProjectSelection();
-    textEl.textContent = id && projectNameById[id] ? projectNameById[id] : '无项目';
+    textEl.textContent = id && projectNameById[id] ? projectNameById[id] : tp('projects.noProject');
 }
 
 function renderChatProjectPanelList() {
@@ -1273,9 +1295,9 @@ function renderChatProjectPanelList() {
     if (!list) return;
     const selected = resolveChatProjectSelection();
     const activeProjects = projectsCache.filter((p) => p.status !== 'archived');
-    const items = [{ id: '', name: '无项目', description: '不绑定项目黑板' }, ...activeProjects];
+    const items = [{ id: '', name: tp('projects.noProject'), description: tp('projects.noProjectDescription') }, ...activeProjects];
     if (!items.length) {
-        list.innerHTML = '<div class="chat-project-panel-empty">暂无项目，点击下方「新建项目」</div>';
+        list.innerHTML = `<div class="chat-project-panel-empty">${escapeHtml(tp('projects.noProjectsClickCreate'))}</div>`;
         return;
     }
     list.innerHTML = '';
@@ -1284,7 +1306,7 @@ function renderChatProjectPanelList() {
         const isSelected = isNone ? !selected : selected === p.id;
         const desc = isNone
             ? (p.description || '')
-            : (p.description || '').trim().slice(0, 80) || '共享事实黑板';
+            : (p.description || '').trim().slice(0, 80) || tp('projects.sharedFactBoard');
         const projectId = p.id || '';
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -1296,7 +1318,7 @@ function renderChatProjectPanelList() {
         btn.innerHTML = `
                 <div class="role-selection-item-icon-main">${isNone ? '—' : '📁'}</div>
                 <div class="role-selection-item-content-main">
-                    <div class="role-selection-item-name-main">${escapeHtml(p.name || '未命名')}</div>
+                    <div class="role-selection-item-name-main">${escapeHtml(p.name || tp('common.untitled'))}</div>
                     <div class="role-selection-item-description-main">${escapeHtml(desc)}</div>
                 </div>
                 ${isSelected ? '<div class="role-selection-checkmark-main">✓</div>' : ''}
@@ -1308,12 +1330,12 @@ function renderChatProjectPanelList() {
 async function renderChatProjectPanel() {
     const list = document.getElementById('chat-project-list');
     if (!list) return;
-    list.innerHTML = '<div class="chat-project-panel-loading">加载中…</div>';
+    list.innerHTML = `<div class="chat-project-panel-loading">${escapeHtml(tp('common.loading'))}</div>`;
     try {
         await ensureProjectsLoaded();
     } catch (e) {
         console.warn(e);
-        list.innerHTML = '<div class="chat-project-panel-empty">加载失败，请稍后重试</div>';
+        list.innerHTML = `<div class="chat-project-panel-empty">${escapeHtml(tp('projects.loadFailedRetry'))}</div>`;
         return;
     }
     renderChatProjectPanelList();
@@ -1373,11 +1395,11 @@ async function applyChatProjectSelection(projectId) {
             }
             window._loadedConversationProjectId = projectId;
             if (typeof showNotification === 'function') {
-                showNotification(projectId ? '已绑定项目' : '已解除项目绑定', 'success');
+                showNotification(projectId ? tp('projects.projectBound') : tp('projects.projectUnbound'), 'success');
             }
         } catch (e) {
             console.error(e);
-            alert('更新项目绑定失败: ' + (e.message || e));
+            alert(tp('projects.updateProjectBindingFailed') + ': ' + (e.message || e));
             updateChatProjectButtonLabel();
             return;
         }
@@ -1411,6 +1433,19 @@ async function onChatProjectChange() {
 function initChatProjectSelector() {
     if (window._chatProjectSelectorInited) return;
     window._chatProjectSelectorInited = true;
+    if (!window._projectsLanguageListenerBound) {
+        window._projectsLanguageListenerBound = true;
+        document.addEventListener('languagechange', () => {
+            renderProjectsSidebar();
+            updateChatProjectButtonLabel();
+            const panel = document.getElementById('chat-project-panel');
+            if (panel && panel.style.display === 'flex') renderChatProjectPanelList();
+            if (currentProjectId) {
+                refreshProjectHeaderStats().catch(() => {});
+                switchProjectTab(currentProjectTab || 'facts');
+            }
+        });
+    }
     refreshChatProjectSelector().catch(() => {});
     document.addEventListener('click', (e) => {
         const panel = document.getElementById('chat-project-panel');
