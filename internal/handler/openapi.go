@@ -778,11 +778,55 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 				},
 				"ConfigResponse": map[string]interface{}{
 					"type":        "object",
-					"description": "配置信息",
+					"description": "配置信息（含 openai、vision、multi_agent 等）",
+					"properties": map[string]interface{}{
+						"vision": map[string]interface{}{
+							"$ref": "#/components/schemas/VisionConfig",
+						},
+					},
 				},
 				"UpdateConfigRequest": map[string]interface{}{
 					"type":        "object",
 					"description": "更新配置请求",
+					"properties": map[string]interface{}{
+						"vision": map[string]interface{}{
+							"$ref": "#/components/schemas/VisionConfig",
+						},
+					},
+				},
+				"VisionConfig": map[string]interface{}{
+					"type":        "object",
+					"description": "视觉分析（analyze_image MCP 工具）；enabled 且 model 非空时注册工具",
+					"properties": map[string]interface{}{
+						"enabled":                      map[string]interface{}{"type": "boolean", "description": "是否启用 analyze_image"},
+						"model":                        map[string]interface{}{"type": "string", "description": "视觉模型名（必填）", "example": "qwen-vl-max"},
+						"api_key":                      map[string]interface{}{"type": "string", "description": "API Key；留空复用 openai.api_key"},
+						"base_url":                     map[string]interface{}{"type": "string", "description": "Base URL；留空复用 openai.base_url"},
+						"provider":                     map[string]interface{}{"type": "string", "description": "提供商；留空复用 openai.provider"},
+						"timeout_seconds":              map[string]interface{}{"type": "integer", "description": "VL 调用超时（秒）"},
+						"max_image_bytes":              map[string]interface{}{"type": "integer", "description": "原始文件大小上限（字节）"},
+						"max_dimension":                map[string]interface{}{"type": "integer", "description": "长边缩放像素"},
+						"jpeg_quality":                 map[string]interface{}{"type": "integer", "description": "JPEG 质量 60-100"},
+						"max_payload_bytes":            map[string]interface{}{"type": "integer", "description": "送 API 体积上限（字节）"},
+						"skip_preprocess_below_bytes":  map[string]interface{}{"type": "integer", "description": "低于该字节且尺寸合规时可原图直传；0=始终压缩"},
+						"detail":                       map[string]interface{}{"type": "string", "enum": []string{"low", "high", "auto"}, "description": "OpenAI 兼容 image detail"},
+						"allowed_roots":                map[string]interface{}{"type": "array", "items": map[string]interface{}{"type": "string"}, "description": "额外允许读取的绝对路径根"},
+					},
+				},
+				"AnalyzeImageToolCall": map[string]interface{}{
+					"type":        "object",
+					"description": "内置 MCP 工具 analyze_image：分析服务器本地图片，返回纯文本（验证码/UI/报错等）",
+					"properties": map[string]interface{}{
+						"path": map[string]interface{}{
+							"type":        "string",
+							"description": "图片路径（cwd、chat_uploads、result_storage_dir 或 allowed_roots 下）",
+						},
+						"question": map[string]interface{}{
+							"type":        "string",
+							"description": "可选：重点问题；验证码建议「只输出验证码字符」",
+						},
+					},
+					"required": []string{"path"},
 				},
 				"ExternalMCPConfig": map[string]interface{}{
 					"type": "object",
@@ -4900,6 +4944,52 @@ func (h *OpenAPIHandler) GetOpenAPISpec(c *gin.Context) {
 			},
 
 			// ==================== 配置管理 - 缺失端点 ====================
+			"/api/config/test-vision": map[string]interface{}{
+				"post": map[string]interface{}{
+					"tags":        []string{"配置管理"},
+					"summary":     "测试视觉模型连接",
+					"description": "测试 Vision 模型 API 是否可用。vision.api_key/base_url 留空时可传 openai 段作回退。",
+					"operationId": "testVision",
+					"requestBody": map[string]interface{}{
+						"required": true,
+						"content": map[string]interface{}{
+							"application/json": map[string]interface{}{
+								"schema": map[string]interface{}{
+									"type":     "object",
+									"required": []string{"vision"},
+									"properties": map[string]interface{}{
+										"vision": map[string]interface{}{"$ref": "#/components/schemas/VisionConfig"},
+										"openai": map[string]interface{}{
+											"type":        "object",
+											"description": "主 LLM 配置（vision 字段留空时用于 API Key/Base URL 回退）",
+										},
+									},
+								},
+							},
+						},
+					},
+					"responses": map[string]interface{}{
+						"200": map[string]interface{}{
+							"description": "测试结果",
+							"content": map[string]interface{}{
+								"application/json": map[string]interface{}{
+									"schema": map[string]interface{}{
+										"type": "object",
+										"properties": map[string]interface{}{
+											"success":    map[string]interface{}{"type": "boolean"},
+											"error":      map[string]interface{}{"type": "string"},
+											"model":      map[string]interface{}{"type": "string"},
+											"latency_ms": map[string]interface{}{"type": "number"},
+										},
+									},
+								},
+							},
+						},
+						"400": map[string]interface{}{"description": "参数错误"},
+						"401": map[string]interface{}{"description": "未授权"},
+					},
+				},
+			},
 			"/api/config/test-openai": map[string]interface{}{
 				"post": map[string]interface{}{
 					"tags":        []string{"配置管理"},

@@ -237,6 +237,7 @@ func (h *ConfigHandler) ApplyWechatRobotBinding(wc config.RobotWechatConfig) err
 // GetConfigResponse 获取配置响应
 type GetConfigResponse struct {
 	OpenAI     config.OpenAIConfig     `json:"openai"`
+	Vision     config.VisionConfig     `json:"vision"`
 	FOFA       config.FofaConfig       `json:"fofa"`
 	MCP        config.MCPConfig        `json:"mcp"`
 	Tools      []ToolConfigInfo        `json:"tools"`
@@ -333,6 +334,7 @@ func (h *ConfigHandler) GetConfig(c *gin.Context) {
 
 	c.JSON(http.StatusOK, GetConfigResponse{
 		OpenAI:     h.config.OpenAI,
+		Vision:     h.config.Vision,
 		FOFA:       h.config.FOFA,
 		MCP:        h.config.MCP,
 		Tools:      tools,
@@ -638,6 +640,7 @@ func (h *ConfigHandler) GetTools(c *gin.Context) {
 // UpdateConfigRequest 更新配置请求
 type UpdateConfigRequest struct {
 	OpenAI     *config.OpenAIConfig         `json:"openai,omitempty"`
+	Vision     *config.VisionConfig         `json:"vision,omitempty"`
 	FOFA       *config.FofaConfig           `json:"fofa,omitempty"`
 	MCP        *config.MCPConfig            `json:"mcp,omitempty"`
 	Tools      []ToolEnableStatus           `json:"tools,omitempty"`
@@ -704,6 +707,14 @@ func (h *ConfigHandler) UpdateConfig(c *gin.Context) {
 		h.logger.Info("更新OpenAI配置",
 			zap.String("base_url", h.config.OpenAI.BaseURL),
 			zap.String("model", h.config.OpenAI.Model),
+		)
+	}
+
+	if req.Vision != nil {
+		h.config.Vision = *req.Vision
+		h.logger.Info("更新 Vision 配置",
+			zap.Bool("enabled", h.config.Vision.Enabled),
+			zap.String("model", h.config.Vision.Model),
 		)
 	}
 
@@ -1031,6 +1042,99 @@ func (h *ConfigHandler) TestOpenAI(c *gin.Context) {
 	})
 }
 
+// TestVisionRequest 测试 Vision 模型连接；vision.api_key/base_url 留空时可传 openai 段作回退。
+type TestVisionRequest struct {
+	Vision config.VisionConfig `json:"vision"`
+	OpenAI config.OpenAIConfig `json:"openai,omitempty"`
+}
+
+// TestVision 测试视觉模型 API 连接（最小 chat completion）。
+func (h *ConfigHandler) TestVision(c *gin.Context) {
+	var req TestVisionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的请求参数: " + err.Error()})
+		return
+	}
+	oa := req.Vision.OpenAICfgEffective(req.OpenAI)
+	if strings.TrimSpace(oa.APIKey) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "API Key 不能为空（可填写 vision.api_key 或 openai.api_key）"})
+		return
+	}
+	if strings.TrimSpace(oa.Model) == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "视觉模型不能为空"})
+		return
+	}
+
+	baseURL := strings.TrimSuffix(strings.TrimSpace(oa.BaseURL), "/")
+	if baseURL == "" {
+		if strings.EqualFold(strings.TrimSpace(oa.Provider), "claude") {
+			baseURL = "https://api.anthropic.com"
+		} else {
+			baseURL = "https://api.openai.com/v1"
+		}
+	}
+
+	payload := map[string]interface{}{
+		"model": oa.Model,
+		"messages": []map[string]string{
+			{"role": "user", "content": "Hi"},
+		},
+		"max_completion_tokens": 5,
+	}
+
+	tmpCfg := &config.OpenAIConfig{
+		Provider: oa.Provider,
+		BaseURL:  baseURL,
+		APIKey:   strings.TrimSpace(oa.APIKey),
+		Model:    oa.Model,
+	}
+	client := openai.NewClient(tmpCfg, nil, h.logger)
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	defer cancel()
+
+	start := time.Now()
+	var chatResp struct {
+		Model   string `json:"model"`
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+	}
+	err := client.ChatCompletion(ctx, payload, &chatResp)
+	latency := time.Since(start)
+
+	if err != nil {
+		if apiErr, ok := err.(*openai.APIError); ok {
+			c.JSON(http.StatusOK, gin.H{
+				"success":     false,
+				"error":       fmt.Sprintf("API 返回错误 (HTTP %d): %s", apiErr.StatusCode, apiErr.Body),
+				"status_code": apiErr.StatusCode,
+			})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"error":   "连接失败: " + err.Error(),
+		})
+		return
+	}
+	if len(chatResp.Choices) == 0 {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"error":   "API 响应缺少 choices 字段，请检查 Base URL 与视觉模型名称",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success":    true,
+		"model":      chatResp.Model,
+		"latency_ms": latency.Milliseconds(),
+	})
+}
+
 // ApplyConfig 应用配置（重新加载并重启相关服务）
 func (h *ConfigHandler) ApplyConfig(c *gin.Context) {
 	// 先检查是否需要动态初始化知识库（在锁外执行，避免阻塞其他请求）
@@ -1286,6 +1390,7 @@ func (h *ConfigHandler) saveConfig() error {
 	updateAgentConfig(root, h.config.Agent)
 	updateMCPConfig(root, h.config.MCP)
 	updateOpenAIConfig(root, h.config.OpenAI)
+	updateVisionConfig(root, h.config.Vision)
 	updateFOFAConfig(root, h.config.FOFA)
 	updateKnowledgeConfig(root, h.config.Knowledge)
 	updateC2Config(root, h.config.C2)
@@ -1404,6 +1509,48 @@ func updateMCPConfig(doc *yaml.Node, cfg config.MCPConfig) {
 	setBoolInMap(mcpNode, "enabled", cfg.Enabled)
 	setStringInMap(mcpNode, "host", cfg.Host)
 	setIntInMap(mcpNode, "port", cfg.Port)
+}
+
+func updateVisionConfig(doc *yaml.Node, cfg config.VisionConfig) {
+	root := doc.Content[0]
+	visionNode := ensureMap(root, "vision")
+	setBoolInMap(visionNode, "enabled", cfg.Enabled)
+	if strings.TrimSpace(cfg.APIKey) != "" {
+		setStringInMap(visionNode, "api_key", cfg.APIKey)
+	} else {
+		setStringInMap(visionNode, "api_key", "")
+	}
+	if strings.TrimSpace(cfg.BaseURL) != "" {
+		setStringInMap(visionNode, "base_url", cfg.BaseURL)
+	} else {
+		setStringInMap(visionNode, "base_url", "")
+	}
+	setStringInMap(visionNode, "model", cfg.Model)
+	if strings.TrimSpace(cfg.Provider) != "" {
+		setStringInMap(visionNode, "provider", cfg.Provider)
+	}
+	if cfg.TimeoutSeconds > 0 {
+		setIntInMap(visionNode, "timeout_seconds", cfg.TimeoutSeconds)
+	}
+	if cfg.MaxImageBytes > 0 {
+		setIntInMap(visionNode, "max_image_bytes", int(cfg.MaxImageBytes))
+	}
+	if cfg.MaxDimension > 0 {
+		setIntInMap(visionNode, "max_dimension", cfg.MaxDimension)
+	}
+	if cfg.JPEGQuality > 0 {
+		setIntInMap(visionNode, "jpeg_quality", cfg.JPEGQuality)
+	}
+	if cfg.MaxPayloadBytes > 0 {
+		setIntInMap(visionNode, "max_payload_bytes", int(cfg.MaxPayloadBytes))
+	}
+	setIntInMap(visionNode, "skip_preprocess_below_bytes", int(cfg.SkipPreprocessBelowBytes))
+	if strings.TrimSpace(cfg.Detail) != "" {
+		setStringInMap(visionNode, "detail", cfg.Detail)
+	}
+	if len(cfg.AllowedRoots) > 0 {
+		setStringSliceInMap(visionNode, "allowed_roots", cfg.AllowedRoots)
+	}
 }
 
 func updateOpenAIConfig(doc *yaml.Node, cfg config.OpenAIConfig) {
