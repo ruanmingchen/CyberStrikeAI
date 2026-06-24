@@ -81,7 +81,7 @@ func RunEinoSingleChatModelAgent(
 	}
 
 	toolInvokeNotify := einomcp.NewToolInvokeNotifyHolder()
-	einoExecMonitor := newEinoExecuteMonitorCallback(ag, recorder)
+	einoExecBegin, einoExecFinish := newEinoExecuteMonitorCallbacks(ag, recorder)
 	mainDefs := ag.ToolsForRole(roleTools)
 	mainTools, err := einomcp.ToolsFromDefinitions(ag, holder, mainDefs, recorder, nil, toolInvokeNotify, einoSingleAgentName)
 	if err != nil {
@@ -136,7 +136,7 @@ func RunEinoSingleChatModelAgent(
 	}
 	if einoSkillMW != nil {
 		if einoFSTools && einoLoc != nil {
-			fsMw, fsErr := subAgentFilesystemMiddleware(ctx, einoLoc, toolInvokeNotify, einoSingleAgentName, einoExecMonitor, agentToolTimeoutMinutes(appCfg), nil)
+			fsMw, fsErr := subAgentFilesystemMiddleware(ctx, einoLoc, toolInvokeNotify, einoSingleAgentName, einoExecBegin, einoExecFinish, agentToolTimeoutMinutes(appCfg), agentShellNoOutputTimeoutSeconds(appCfg), nil)
 			if fsErr != nil {
 				return nil, fmt.Errorf("eino single filesystem 中间件: %w", fsErr)
 			}

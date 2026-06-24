@@ -120,7 +120,7 @@ func RunDeepAgent(
 		mcpIDs = append(mcpIDs, id)
 		mcpIDsMu.Unlock()
 	}
-	einoExecMonitor := newEinoExecuteMonitorCallback(ag, recorder)
+	einoExecBegin, einoExecFinish := newEinoExecuteMonitorCallbacks(ag, recorder)
 
 	// 与单代理流式一致：在 response_start / response_delta 的 data 中带当前 mcpExecutionIds，供主聊天绑定复制与展示。
 	snapshotMCPIDs := func() []string {
@@ -223,7 +223,7 @@ func RunDeepAgent(
 			}
 			if einoSkillMW != nil {
 				if einoFSTools && einoLoc != nil {
-					subFs, fsErr := subAgentFilesystemMiddleware(ctx, einoLoc, toolInvokeNotify, id, einoExecMonitor, agentToolTimeoutMinutes(appCfg), nil)
+					subFs, fsErr := subAgentFilesystemMiddleware(ctx, einoLoc, toolInvokeNotify, id, einoExecBegin, einoExecFinish, agentToolTimeoutMinutes(appCfg), agentShellNoOutputTimeoutSeconds(appCfg), nil)
 					if fsErr != nil {
 						return nil, fmt.Errorf("子代理 %q filesystem 中间件: %w", id, fsErr)
 					}
@@ -358,12 +358,14 @@ func RunDeepAgent(
 	if einoLoc != nil && einoFSTools {
 		deepBackend = einoLoc
 		deepShell = &einoStreamingShellWrap{
-			inner:              einoLoc,
-			invokeNotify:       toolInvokeNotify,
-			einoAgentName:      orchestratorName,
-			outputChunk:        nil,
-			recordMonitor:      einoExecMonitor,
-			toolTimeoutMinutes: agentToolTimeoutMinutes(appCfg),
+			inner:                   einoLoc,
+			invokeNotify:            toolInvokeNotify,
+			einoAgentName:           orchestratorName,
+			outputChunk:             nil,
+			beginMonitor:            einoExecBegin,
+			finishMonitor:           einoExecFinish,
+			toolTimeoutMinutes:      agentToolTimeoutMinutes(appCfg),
+			shellNoOutputTimeoutSec: agentShellNoOutputTimeoutSeconds(appCfg),
 		}
 	}
 
@@ -428,7 +430,7 @@ func RunDeepAgent(
 		// 构建 filesystem 中间件（与 Deep sub-agent 一致）
 		var peFsMw adk.ChatModelAgentMiddleware
 		if einoSkillMW != nil && einoFSTools && einoLoc != nil {
-			peFsMw, err = subAgentFilesystemMiddleware(ctx, einoLoc, toolInvokeNotify, "executor", einoExecMonitor, agentToolTimeoutMinutes(appCfg), nil)
+			peFsMw, err = subAgentFilesystemMiddleware(ctx, einoLoc, toolInvokeNotify, "executor", einoExecBegin, einoExecFinish, agentToolTimeoutMinutes(appCfg), agentShellNoOutputTimeoutSeconds(appCfg), nil)
 			if err != nil {
 				return nil, fmt.Errorf("plan_execute filesystem 中间件: %w", err)
 			}

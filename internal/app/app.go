@@ -110,6 +110,7 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 
 	// 创建安全工具执行器
 	executor := security.NewExecutor(&cfg.Security, mcpServer, log.Logger)
+	executor.SetShellNoOutputTimeoutSeconds(cfg.Agent.ShellNoOutputTimeoutSeconds)
 
 	// 注册工具
 	executor.RegisterTools(mcpServer)
@@ -333,6 +334,8 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 	monitorHandler.SetAudit(auditSvc)
 	monitorHandler.SetMonitorRetention(monitorRetention)
 	monitorHandler.SetExternalMCPManager(externalMCPMgr) // 设置外部MCP管理器，以便获取外部MCP执行记录
+	monitorHandler.SetTaskManager(agentHandler.TaskManager())
+	monitorHandler.SetAgentHandler(agentHandler)
 	notificationHandler := handler.NewNotificationHandler(db, agentHandler, log.Logger)
 	groupHandler := handler.NewGroupHandler(db, log.Logger)
 	authHandler := handler.NewAuthHandler(authManager, cfg, configPath, log.Logger)

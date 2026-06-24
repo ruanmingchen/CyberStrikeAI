@@ -19,9 +19,15 @@ type mockStreamingShell struct {
 	immediateErr error
 	recvErr      error
 	output       string
+	called       bool
+	lastCommand  string
 }
 
 func (m *mockStreamingShell) ExecuteStreaming(ctx context.Context, input *filesystem.ExecuteRequest) (*schema.StreamReader[*filesystem.ExecuteResponse], error) {
+	m.called = true
+	if input != nil {
+		m.lastCommand = input.Command
+	}
 	if m.immediateErr != nil {
 		return nil, m.immediateErr
 	}
@@ -34,6 +40,135 @@ func (m *mockStreamingShell) ExecuteStreaming(ctx context.Context, input *filesy
 		if m.recvErr != nil {
 			_ = outW.Send(nil, m.recvErr)
 		}
+	}()
+	return outR, nil
+}
+
+func TestEinoStreamingShellWrap_PreparesNonInteractiveCommand(t *testing.T) {
+	inner := &mockStreamingShell{output: "ok\n"}
+	wrap := &einoStreamingShellWrap{inner: inner}
+	sr, err := wrap.ExecuteStreaming(context.Background(), &filesystem.ExecuteRequest{Command: "echo ok"})
+	if err != nil {
+		t.Fatalf("ExecuteStreaming: %v", err)
+	}
+	defer sr.Close()
+	for {
+		_, rerr := sr.Recv()
+		if errors.Is(rerr, io.EOF) {
+			break
+		}
+		if rerr != nil {
+			t.Fatalf("recv: %v", rerr)
+		}
+	}
+	if !strings.Contains(inner.lastCommand, "exec </dev/null") {
+		t.Fatalf("missing stdin redirect in inner command: %q", inner.lastCommand)
+	}
+	if !strings.Contains(inner.lastCommand, "GIT_PAGER=cat") {
+		t.Fatalf("missing pager export in inner command: %q", inner.lastCommand)
+	}
+	if !strings.Contains(inner.lastCommand, "PYTHONUNBUFFERED=1") {
+		t.Fatalf("missing python unbuffer in inner command: %q", inner.lastCommand)
+	}
+}
+
+func TestEinoStreamingShellWrap_NoOutputTimeout(t *testing.T) {
+	inner := &mockStreamingShellHanging{}
+	notify := einomcp.NewToolInvokeNotifyHolder()
+	var fired string
+	notify.Set(func(toolCallID, toolName, einoAgent string, success bool, content string, invokeErr error) {
+		fired = content
+	})
+	wrap := &einoStreamingShellWrap{
+		inner:                   inner,
+		invokeNotify:            notify,
+		shellNoOutputTimeoutSec: 1,
+	}
+	sr, err := wrap.ExecuteStreaming(context.Background(), &filesystem.ExecuteRequest{Command: "sudo whoami"})
+	if err != nil {
+		t.Fatalf("ExecuteStreaming: %v", err)
+	}
+	defer sr.Close()
+	var got strings.Builder
+	for {
+		resp, rerr := sr.Recv()
+		if errors.Is(rerr, io.EOF) {
+			break
+		}
+		if rerr != nil {
+			t.Fatalf("recv: %v", rerr)
+		}
+		if resp != nil {
+			got.WriteString(resp.Output)
+		}
+	}
+	if !inner.called {
+		t.Fatal("inner shell should run (no command blacklist)")
+	}
+	out := got.String()
+	if !strings.Contains(out, "没有新的输出") && !strings.Contains(out, "no new output") {
+		t.Fatalf("expected inactivity timeout message, got: %q notify=%q", out, fired)
+	}
+}
+
+type mockStreamingShellPartialThenHang struct {
+	called bool
+}
+
+func (m *mockStreamingShellPartialThenHang) ExecuteStreaming(ctx context.Context, input *filesystem.ExecuteRequest) (*schema.StreamReader[*filesystem.ExecuteResponse], error) {
+	m.called = true
+	outR, outW := schema.Pipe[*filesystem.ExecuteResponse](4)
+	go func() {
+		_ = outW.Send(&filesystem.ExecuteResponse{Output: "[sudo] password:\n"}, nil)
+		<-ctx.Done()
+		outW.Close()
+	}()
+	return outR, nil
+}
+
+func TestEinoStreamingShellWrap_InactivityAfterPartialOutput(t *testing.T) {
+	inner := &mockStreamingShellPartialThenHang{}
+	wrap := &einoStreamingShellWrap{
+		inner:                   inner,
+		shellNoOutputTimeoutSec: 1,
+	}
+	start := time.Now()
+	sr, err := wrap.ExecuteStreaming(context.Background(), &filesystem.ExecuteRequest{Command: "sudo whoami"})
+	if err != nil {
+		t.Fatalf("ExecuteStreaming: %v", err)
+	}
+	defer sr.Close()
+	var got strings.Builder
+	for {
+		resp, rerr := sr.Recv()
+		if errors.Is(rerr, io.EOF) {
+			break
+		}
+		if rerr != nil {
+			t.Fatalf("recv: %v", rerr)
+		}
+		if resp != nil {
+			got.WriteString(resp.Output)
+		}
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Fatalf("expected inactivity timeout ~1s, took %v", time.Since(start))
+	}
+	if !strings.Contains(got.String(), "没有新的输出") && !strings.Contains(got.String(), "no new output") {
+		t.Fatalf("expected inactivity message, got: %q", got.String())
+	}
+}
+
+type mockStreamingShellHanging struct {
+	called bool
+}
+
+func (m *mockStreamingShellHanging) ExecuteStreaming(ctx context.Context, input *filesystem.ExecuteRequest) (*schema.StreamReader[*filesystem.ExecuteResponse], error) {
+	m.called = true
+	outR, outW := schema.Pipe[*filesystem.ExecuteResponse](4)
+	go func() {
+		<-ctx.Done()
+		outW.Close()
 	}()
 	return outR, nil
 }

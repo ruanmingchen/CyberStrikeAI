@@ -196,6 +196,16 @@ func runEinoADKAgentLoop(ctx context.Context, args *einoADKRunLoopArgs, baseMsgs
 		pendingByID[tc.ToolCallID] = tc
 		pendingQueueByAgent[tc.EinoAgent] = append(pendingQueueByAgent[tc.EinoAgent], tc.ToolCallID)
 	}
+	markPendingWithMonitor := func(tc toolCallPendingInfo) {
+		markPending(tc)
+		beginEinoADKFilesystemToolMonitor(
+			args.FilesystemMonitorAgent,
+			args.FilesystemMonitorRecord,
+			args.MCPExecutionBinder,
+			tc.ToolCallID,
+			tc.ToolName,
+		)
+	}
 	popNextPendingForAgent := func(agentName string) (toolCallPendingInfo, bool) {
 		pendingMu.Lock()
 		defer pendingMu.Unlock()
@@ -331,7 +341,7 @@ func runEinoADKAgentLoop(ctx context.Context, args *einoADKRunLoopArgs, baseMsgs
 			toolCallID = tid
 		}
 		recordPendingExecuteStdoutDup(toolName, content, isErr)
-		recordEinoADKFilesystemToolMonitor(args.FilesystemMonitorAgent, args.FilesystemMonitorRecord, toolName, toolCallID, runAccumulatedMsgs, content, isErr)
+		recordEinoADKFilesystemToolMonitor(args.FilesystemMonitorAgent, args.FilesystemMonitorRecord, args.MCPExecutionBinder, toolName, toolCallID, runAccumulatedMsgs, content, isErr)
 		if args.FilesystemMonitorAgent != nil && args.MCPExecutionBinder != nil {
 			if execID := args.MCPExecutionBinder.ExecutionID(toolCallID); execID != "" {
 				args.FilesystemMonitorAgent.UpdateMCPExecutionDisplayResult(execID, content)
@@ -974,7 +984,7 @@ func runEinoADKAgentLoop(ctx context.Context, args *einoADKRunLoopArgs, baseMsgs
 			if merged := mergeStreamingToolCallFragments(toolStreamFragments); len(merged) > 0 {
 				lastToolChunk = mergeMessageToolCalls(&schema.Message{ToolCalls: merged})
 			}
-			tryEmitToolCallsOnce(lastToolChunk, ev.AgentName, orchestratorName, conversationID, orchMode, progress, toolEmitSeen, subAgentToolStep, mainAgentToolStep, markPending)
+			tryEmitToolCallsOnce(lastToolChunk, ev.AgentName, orchestratorName, conversationID, orchMode, progress, toolEmitSeen, subAgentToolStep, mainAgentToolStep, markPendingWithMonitor)
 			// 流式路径此前只把 tool_calls 推给进度 UI，未写入 runAccumulatedMsgs；落库后 loadHistory→RepairOrphan 会删掉全部 tool 结果，表现为「续跑/下轮失忆」。
 			if lastToolChunk != nil && len(lastToolChunk.ToolCalls) > 0 {
 				runAccumulatedMsgs = append(runAccumulatedMsgs, schema.AssistantMessage("", lastToolChunk.ToolCalls))
@@ -1009,7 +1019,7 @@ func runEinoADKAgentLoop(ctx context.Context, args *einoADKRunLoopArgs, baseMsgs
 			continue
 		}
 		runAccumulatedMsgs = append(runAccumulatedMsgs, msg)
-		tryEmitToolCallsOnce(mergeMessageToolCalls(msg), ev.AgentName, orchestratorName, conversationID, orchMode, progress, toolEmitSeen, subAgentToolStep, mainAgentToolStep, markPending)
+		tryEmitToolCallsOnce(mergeMessageToolCalls(msg), ev.AgentName, orchestratorName, conversationID, orchMode, progress, toolEmitSeen, subAgentToolStep, mainAgentToolStep, markPendingWithMonitor)
 
 		if mv.Role == schema.Assistant {
 			if progress != nil && strings.TrimSpace(msg.ReasoningContent) != "" {
