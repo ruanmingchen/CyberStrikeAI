@@ -305,7 +305,8 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 	// Match eino_adk_run_loop: checkpoint_dir is used as configured (relative to process CWD when not absolute).
 	checkpointBase := strings.TrimSpace(cfg.MultiAgent.EinoMiddleware.CheckpointDir)
 	reductionRoot := strings.TrimSpace(cfg.MultiAgent.EinoMiddleware.ReductionRootDir)
-	db.SetEinoConversationDirs(plantaskBase, checkpointBase, reductionRoot)
+	workspaceRoot := strings.TrimSpace(cfg.Agent.WorkspaceRootDir)
+	db.SetEinoConversationDirs(plantaskBase, checkpointBase, reductionRoot, workspaceRoot)
 	agent.SetPromptBaseDir(configDir)
 
 	agentsDir := cfg.AgentsDir

@@ -652,7 +652,7 @@ func (h *AgentHandler) runRobotEinoSingleWithRetry(
 ) (string, string, error) {
 	resultMA, errMA := multiagent.RunEinoSingleChatModelAgent(
 		taskCtx, h.config, &h.config.MultiAgent, h.agent, h.db, h.logger,
-		conversationID, h.conversationProjectID(conversationID), finalMessage, history, roleTools, progressCallback, nil, h.projectBlackboardBlock(conversationID),
+		conversationID, h.conversationProjectID(conversationID), finalMessage, history, roleTools, progressCallback, nil, h.agentSessionContextBlock(conversationID),
 	)
 	if errMA != nil {
 		*taskStatus = "failed"
@@ -673,7 +673,7 @@ func (h *AgentHandler) runRobotMultiAgentWithRetry(
 	resultMA, errMA := multiagent.RunDeepAgent(
 		taskCtx, h.config, &h.config.MultiAgent, h.agent, h.db, h.logger,
 		conversationID, h.conversationProjectID(conversationID), finalMessage, history, roleTools, progressCallback,
-		h.agentsMarkdownDir, orchestration, nil, h.projectBlackboardBlock(conversationID),
+		h.agentsMarkdownDir, orchestration, nil, h.agentSessionContextBlock(conversationID),
 	)
 	if errMA != nil {
 		*taskStatus = "failed"
