@@ -1763,6 +1763,22 @@ function isDashboardDarkTheme() {
     return document.documentElement.getAttribute('data-theme') === 'dark';
 }
 
+function ensureSeverityDonutThemeObserver() {
+    if (severityDonutState.themeObserver) return;
+    severityDonutState.themeObserver = new MutationObserver(function (mutations) {
+        for (var i = 0; i < mutations.length; i++) {
+            if (mutations[i].attributeName === 'data-theme') {
+                renderSeverityDonut(severityDonutState.bySeverity, severityDonutState.total);
+                break;
+            }
+        }
+    });
+    severityDonutState.themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['data-theme']
+    });
+}
+
 function ensureSeverityDonutDefs() {
     var defsEl = document.getElementById('dashboard-severity-donut-defs');
     if (!defsEl) return;
@@ -1829,6 +1845,8 @@ function renderSeverityDonut(bySeverity, total) {
     severityDonutState.bySeverity = bySeverity && typeof bySeverity === 'object' ? bySeverity : {};
     severityDonutState.total = total || 0;
     severityDonutState.hoverId = null;
+
+    ensureSeverityDonutThemeObserver();
 
     var cfg = SEVERITY_DONUT_CFG;
     ensureSeverityDonutDefs();
@@ -2124,20 +2142,6 @@ function attachSeverityDonutInteractivity() {
             legend.addEventListener('mouseout', severityLegendPointerOut);
             legend.addEventListener('click', severityLegendClick);
             legend.addEventListener('keydown', severityLegendKeydown);
-        }
-        if (!severityDonutState.themeObserver) {
-            severityDonutState.themeObserver = new MutationObserver(function (mutations) {
-                for (var i = 0; i < mutations.length; i++) {
-                    if (mutations[i].attributeName === 'data-theme') {
-                        renderSeverityDonut(severityDonutState.bySeverity, severityDonutState.total);
-                        break;
-                    }
-                }
-            });
-            severityDonutState.themeObserver.observe(document.documentElement, {
-                attributes: true,
-                attributeFilter: ['data-theme']
-            });
         }
     }
 
