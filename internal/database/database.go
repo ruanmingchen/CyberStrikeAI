@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -388,9 +388,12 @@ func (db *DB) initTables() error {
 		status TEXT NOT NULL DEFAULT 'open',
 		vulnerability_type TEXT,
 		target TEXT,
-		proof TEXT,
+		preconditions TEXT,
+		reproduction_steps TEXT,
+		evidence TEXT,
 		impact TEXT,
 		recommendation TEXT,
+		retest_notes TEXT,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		project_id TEXT,
@@ -1224,9 +1227,12 @@ func (db *DB) migrateVulnerabilitiesConversationFK() error {
 		status TEXT NOT NULL DEFAULT 'open',
 		vulnerability_type TEXT,
 		target TEXT,
-		proof TEXT,
+		preconditions TEXT,
+		reproduction_steps TEXT,
+		evidence TEXT,
 		impact TEXT,
 		recommendation TEXT,
+		retest_notes TEXT,
 		created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
 		project_id TEXT,
@@ -1239,12 +1245,15 @@ func (db *DB) migrateVulnerabilitiesConversationFK() error {
 	const copyRows = `
 	INSERT INTO vulnerabilities_new (
 		id, conversation_id, conversation_tag, task_tag, title, description,
-		severity, status, vulnerability_type, target, proof, impact, recommendation,
+		severity, status, vulnerability_type, target, preconditions, reproduction_steps,
+		evidence, impact, recommendation, retest_notes,
 		created_at, updated_at, project_id
 	)
 	SELECT
 		id, conversation_id, conversation_tag, task_tag, title, description,
-		severity, status, vulnerability_type, target, proof, impact, recommendation,
+		severity, status, vulnerability_type, target,
+		COALESCE(preconditions, ''), COALESCE(reproduction_steps, ''),
+		COALESCE(evidence, ''), impact, recommendation, COALESCE(retest_notes, ''),
 		created_at, updated_at, project_id
 	FROM vulnerabilities;`
 	if _, err := tx.Exec(copyRows); err != nil {
@@ -1315,6 +1324,10 @@ func (db *DB) migrateVulnerabilitiesTable() error {
 		{name: "conversation_tag", stmt: "ALTER TABLE vulnerabilities ADD COLUMN conversation_tag TEXT"},
 		{name: "task_tag", stmt: "ALTER TABLE vulnerabilities ADD COLUMN task_tag TEXT"},
 		{name: "project_id", stmt: "ALTER TABLE vulnerabilities ADD COLUMN project_id TEXT"},
+		{name: "preconditions", stmt: "ALTER TABLE vulnerabilities ADD COLUMN preconditions TEXT"},
+		{name: "reproduction_steps", stmt: "ALTER TABLE vulnerabilities ADD COLUMN reproduction_steps TEXT"},
+		{name: "evidence", stmt: "ALTER TABLE vulnerabilities ADD COLUMN evidence TEXT"},
+		{name: "retest_notes", stmt: "ALTER TABLE vulnerabilities ADD COLUMN retest_notes TEXT"},
 	}
 
 	for _, col := range columns {
