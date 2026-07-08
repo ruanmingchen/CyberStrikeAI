@@ -2128,6 +2128,7 @@
     "projectBindFailed": "绑定项目失败",
     "projectBindOk": "已更新项目绑定",
     "detailConversationId": "会话ID",
+    "openConversation": "查看对话",
     "detailTaskId": "任务ID",
     "detailTaskQueueId": "任务队列ID",
     "detailConversationTag": "对话标签",

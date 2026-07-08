@@ -2140,6 +2140,7 @@
     "projectBindFailed": "Failed to update project binding",
     "projectBindOk": "Project binding updated",
     "detailConversationId": "Conversation ID",
+    "openConversation": "View conversation",
     "detailTaskId": "Task ID",
     "detailTaskQueueId": "Task queue ID",
     "detailConversationTag": "Conversation tag",

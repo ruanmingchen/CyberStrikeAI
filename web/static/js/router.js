@@ -50,6 +50,29 @@ function scheduleChatConversationFromHash(delayMs) {
     }, delayMs);
 }
 
+/** 跳转到指定对话：单次切页 + 单次加载，避免 hashchange 与手动 load 重复触发导致闪烁 */
+function navigateToConversation(conversationId) {
+    const cid = String(conversationId || '').trim();
+    if (!cid) return;
+    const targetHash = 'chat?conversation=' + encodeURIComponent(cid);
+    const alreadyOnChat = currentPage === 'chat';
+
+    if (window.location.hash.slice(1) !== targetHash) {
+        history.replaceState(null, '', '#' + targetHash);
+    }
+
+    if (!alreadyOnChat) {
+        switchPage('chat');
+    }
+
+    if (typeof loadConversation === 'function') {
+        void loadConversation(cid);
+    } else if (typeof window.loadConversation === 'function') {
+        void window.loadConversation(cid);
+    }
+}
+window.navigateToConversation = navigateToConversation;
+
 // 初始化路由
 function initRouter() {
     // 从URL hash读取页面（如果有）
