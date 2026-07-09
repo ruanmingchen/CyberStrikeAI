@@ -22,6 +22,7 @@
     "view": "View",
     "actions": "Actions",
     "loadFailed": "Load failed",
+    "loadMore": "Load more",
     "untitled": "Untitled",
     "justNow": "Just now",
     "minutesAgo": "{{n}} min ago",
@@ -555,6 +556,10 @@
     "noMatchTools": "No matching tools",
     "penetrationTestDetail": "Penetration test details",
     "expandDetail": "Expand details",
+    "expandDetailLazyHint": "Expand details (loads iteration details on click)",
+    "viewToolDetail": "View details",
+    "collapseToolDetail": "Collapse",
+    "liveTimelinePruned": "Collapsed the first {{count}} live process details. View the full record page by page after the task completes.",
     "toolExecutionsCount": "{{n}} tool runs",
     "collapseToolExecutions": "Collapse tool runs",
     "noProcessDetail": "No process details (execution may be too fast or no detailed events)",
@@ -804,7 +809,9 @@
     "noResult": "No result",
     "running": "Running...",
     "completed": "Completed",
-    "execFailed": "Execution failed"
+    "execFailed": "Execution failed",
+    "toolSucceeded": "Succeeded",
+    "toolFailed": "Failed"
   },
   "tasks": {
     "title": "Task Management",
@@ -1813,6 +1820,7 @@
   "mcpMonitor": {
     "deselectAll": "Deselect all",
     "statusPending": "Pending",
+    "statusSuccess": "Succeeded",
     "statusCompleted": "Completed",
     "statusRunning": "Running",
     "statusFailed": "Failed",

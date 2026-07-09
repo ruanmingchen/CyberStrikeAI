@@ -22,6 +22,7 @@
     "view": "查看",
     "actions": "操作",
     "loadFailed": "加载失败",
+    "loadMore": "加载更多",
     "untitled": "未命名",
     "justNow": "刚刚",
     "minutesAgo": "{{n}} 分钟前",
@@ -543,6 +544,10 @@
     "noMatchTools": "没有匹配的工具",
     "penetrationTestDetail": "渗透测试详情",
     "expandDetail": "展开详情",
+    "expandDetailLazyHint": "展开详情（点击后加载迭代详情）",
+    "viewToolDetail": "查看详情",
+    "collapseToolDetail": "收起",
+    "liveTimelinePruned": "已收起前 {{count}} 条实时过程详情，任务完成后可按页查看完整记录",
     "toolExecutionsCount": "{{n}}次工具执行",
     "collapseToolExecutions": "收起工具执行",
     "noProcessDetail": "暂无过程详情（可能执行过快或未触发详细事件）",
@@ -792,7 +797,9 @@
     "noResult": "无结果",
     "running": "执行中...",
     "completed": "已完成",
-    "execFailed": "执行失败"
+    "execFailed": "执行失败",
+    "toolSucceeded": "成功",
+    "toolFailed": "失败"
   },
   "tasks": {
     "title": "任务管理",
@@ -1801,6 +1808,7 @@
   "mcpMonitor": {
     "deselectAll": "取消全选",
     "statusPending": "等待中",
+    "statusSuccess": "成功",
     "statusCompleted": "已完成",
     "statusRunning": "执行中",
     "statusFailed": "失败",

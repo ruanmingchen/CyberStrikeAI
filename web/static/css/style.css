@@ -4190,6 +4190,41 @@ html[data-theme="dark"] .openapi-doc-btn:hover {
     transform: translateY(0);
 }
 
+.mcp-detail-btn[data-exec-id] {
+    min-height: 32px;
+}
+
+.mcp-detail-btn[data-status="completed"] {
+    color: var(--text-primary);
+    border-color: rgba(40, 167, 69, 0.34);
+    background: rgba(40, 167, 69, 0.055);
+}
+
+.mcp-detail-btn[data-status="failed"] {
+    color: var(--text-primary);
+    border-color: rgba(220, 53, 69, 0.36);
+    background: rgba(220, 53, 69, 0.06);
+}
+
+.mcp-detail-btn[data-status="running"],
+.mcp-detail-btn[data-status="pending"] {
+    color: var(--text-primary);
+    border-color: rgba(0, 102, 255, 0.32);
+    background: rgba(0, 102, 255, 0.055);
+}
+
+.mcp-detail-btn[data-status="cancelled"] {
+    color: var(--text-muted);
+    border-color: rgba(148, 163, 184, 0.32);
+    background: rgba(148, 163, 184, 0.065);
+}
+
+.mcp-detail-btn .mcp-tool-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* 登录遮罩 */
 .login-overlay {
     position: fixed;
@@ -5163,7 +5198,14 @@ html[data-theme="dark"] .openapi-doc-btn:hover {
     word-break: break-word;
 }
 
-/* 过程详情 Markdown：避免长 URL/代码/表格撑破紫/蓝时间线条目 */
+/* 过程详情纯文本：避免长 URL/代码/表格撑破时间线条目 */
+.timeline-item-content .timeline-plain-text {
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    background: transparent;
+}
+
 .timeline-item-content p,
 .timeline-item-content li,
 .timeline-item-content td,
@@ -5198,6 +5240,16 @@ html[data-theme="dark"] .openapi-doc-btn:hover {
 .progress-timeline .timeline-item {
     content-visibility: auto;
     contain-intrinsic-size: auto 72px;
+}
+
+.timeline-live-pruned-marker {
+    margin: 8px 0;
+    padding: 8px 12px;
+    border: 1px dashed rgba(148, 163, 184, 0.35);
+    border-radius: 6px;
+    color: var(--text-muted);
+    background: rgba(148, 163, 184, 0.08);
+    font-size: 0.8125rem;
 }
 
 .tool-details {
@@ -5481,20 +5533,73 @@ html[data-theme="dark"] .openapi-doc-btn:hover {
     border: 1px solid rgba(220, 53, 69, 0.3);
 }
 
-/* 工具调用项状态：全程保持「信息蓝」系，完成态不用绿色（避免与工具成功结果混淆） */
+/* 工具调用项状态：摘要态直接表达成功/失败，避免必须展开才能判断状态 */
 .timeline-item-tool_call.tool-call-running {
-    border-left-color: #42a5f5;
-    background: rgba(66, 165, 245, 0.1);
+    border: 1px solid rgba(66, 165, 245, 0.32);
+    border-left: 3px solid #42a5f5;
+    background: rgba(66, 165, 245, 0.075);
 }
 
 .timeline-item-tool_call.tool-call-completed {
-    border-left-color: #0d47a1;
-    background: rgba(13, 71, 161, 0.08);
+    border: 1px solid rgba(40, 167, 69, 0.34);
+    border-left: 3px solid var(--success-color);
+    background: rgba(40, 167, 69, 0.075);
 }
 
 .timeline-item-tool_call.tool-call-failed {
-    border-left-color: var(--error-color);
-    background: rgba(220, 53, 69, 0.1);
+    border: 1px solid rgba(220, 53, 69, 0.36);
+    border-left: 3px solid var(--error-color);
+    background: rgba(220, 53, 69, 0.085);
+}
+
+.timeline-item.tool-detail-collapsible {
+    cursor: pointer;
+}
+
+.timeline-item.tool-detail-collapsible .timeline-item-header {
+    cursor: pointer;
+    position: relative;
+    padding-right: 104px;
+}
+
+.timeline-item.tool-detail-collapsible .timeline-item-header:hover .timeline-item-title {
+    color: var(--accent-color);
+}
+
+.timeline-item.tool-detail-collapsible .timeline-item-header::after {
+    content: attr(data-tool-detail-label);
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid rgba(96, 165, 250, 0.35);
+    color: #93c5fd;
+    background: rgba(37, 99, 235, 0.12);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.timeline-item.tool-detail-collapsible .timeline-item-header:hover::after {
+    color: #dbeafe;
+    border-color: rgba(147, 197, 253, 0.65);
+    background: rgba(37, 99, 235, 0.22);
+}
+
+@media (max-width: 640px) {
+    .timeline-item.tool-detail-collapsible .timeline-item-header {
+        padding-right: 0;
+    }
+
+    .timeline-item.tool-detail-collapsible .timeline-item-header::after {
+        position: static;
+        transform: none;
+        margin-left: auto;
+        flex: 0 0 auto;
+    }
 }
 
 /* 参数块与卡片类型色弱对齐，扫读时一眼归到「调用」 */
@@ -29720,6 +29825,173 @@ html[data-theme="dark"] #skill-view-body {
     background: #0b1120 !important;
     color: #dbeafe;
     border-color: #263244;
+}
+
+html[data-theme="dark"] .timeline-item-content .timeline-plain-text {
+    background: transparent !important;
+    border-color: transparent !important;
+    color: inherit;
+    padding: 0;
+}
+
+html[data-theme="dark"] .timeline-item-content.timeline-stream-plain {
+    background: transparent;
+}
+
+html[data-theme="dark"] .progress-container {
+    background: #0f172a;
+    border-color: #243044;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+
+html[data-theme="dark"] .message.system .message-bubble.progress-container {
+    background: #0b1120 !important;
+    color: var(--text-primary);
+    border-color: #203047 !important;
+}
+
+html[data-theme="dark"] .progress-container.completed {
+    background: #111827;
+    border-color: #263244;
+}
+
+html[data-theme="dark"] .chat-scroll-to-bottom {
+    background: rgba(15, 23, 42, 0.94);
+    color: #dbeafe;
+    border-color: rgba(96, 165, 250, 0.36);
+    box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.34),
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+}
+
+html[data-theme="dark"] .chat-scroll-to-bottom:hover {
+    background: #172033;
+    color: #ffffff;
+    border-color: rgba(147, 197, 253, 0.62);
+    box-shadow:
+        0 12px 28px rgba(0, 0, 0, 0.42),
+        0 0 0 1px rgba(147, 197, 253, 0.08) inset;
+}
+
+html[data-theme="dark"] .chat-scroll-to-bottom:focus-visible {
+    outline-color: #93c5fd;
+}
+
+html[data-theme="dark"] .process-details-container {
+    border-top-color: #263244;
+}
+
+html[data-theme="dark"] .progress-header,
+html[data-theme="dark"] .progress-footer {
+    border-color: #243044;
+}
+
+html[data-theme="dark"] .progress-toggle {
+    background: #111827;
+    border-color: #2b374b;
+    color: #a7b0c0;
+}
+
+html[data-theme="dark"] .progress-toggle:hover {
+    background: #172033;
+    border-color: rgba(96, 165, 250, 0.38);
+    color: #dbeafe;
+}
+
+html[data-theme="dark"] .timeline-item {
+    background: #0f172a;
+    border-left-color: #334155;
+}
+
+html[data-theme="dark"] .timeline-item:hover {
+    background: #132036;
+}
+
+html[data-theme="dark"] .timeline-item-content {
+    border-top-color: rgba(148, 163, 184, 0.16);
+}
+
+html[data-theme="dark"] .timeline-item-iteration,
+html[data-theme="dark"] .timeline-item.timeline-item-iteration.timeline-eino-scope-main,
+html[data-theme="dark"] .timeline-item.timeline-item-iteration.timeline-eino-scope-sub {
+    background: #101a2b !important;
+}
+
+html[data-theme="dark"] .timeline-item-thinking {
+    background: rgba(139, 92, 246, 0.09);
+}
+
+html[data-theme="dark"] .timeline-item-thinking[data-response-stream-placeholder="1"] {
+    background: rgba(96, 165, 250, 0.075);
+}
+
+html[data-theme="dark"] .timeline-item-reasoning_chain {
+    background: rgba(124, 58, 237, 0.11);
+}
+
+html[data-theme="dark"] .timeline-item-planning {
+    background: rgba(45, 212, 191, 0.075);
+}
+
+html[data-theme="dark"] .timeline-item-tool_call,
+html[data-theme="dark"] .timeline-item-tool_calls_detected {
+    background: rgba(96, 165, 250, 0.075);
+}
+
+html[data-theme="dark"] .timeline-item-tool_result,
+html[data-theme="dark"] .timeline-item-progress {
+    background: rgba(148, 163, 184, 0.075);
+}
+
+html[data-theme="dark"] .timeline-item-eino_agent_reply {
+    background: rgba(168, 85, 247, 0.1);
+}
+
+html[data-theme="dark"] .timeline-item-tool_call:has(.tool-result-section.success),
+html[data-theme="dark"] .timeline-item-tool_result:has(.tool-result-section.success) {
+    background: rgba(52, 211, 153, 0.08);
+}
+
+html[data-theme="dark"] .timeline-item-tool_call:has(.tool-result-section.error),
+html[data-theme="dark"] .timeline-item-tool_result:has(.tool-result-section.error),
+html[data-theme="dark"] .timeline-item-tool_result.error,
+html[data-theme="dark"] .timeline-item-error {
+    background: rgba(248, 113, 113, 0.1);
+}
+
+html[data-theme="dark"] .timeline-item-tool_call.tool-call-running {
+    border: 1px solid rgba(96, 165, 250, 0.32);
+    border-left: 3px solid #60a5fa;
+    background: rgba(37, 99, 235, 0.105);
+}
+
+html[data-theme="dark"] .timeline-item-tool_call.tool-call-completed {
+    border: 1px solid rgba(52, 211, 153, 0.34);
+    border-left: 3px solid #34d399;
+    background: rgba(16, 185, 129, 0.105);
+}
+
+html[data-theme="dark"] .timeline-item-tool_call.tool-call-failed {
+    border: 1px solid rgba(248, 113, 113, 0.38);
+    border-left: 3px solid #f87171;
+    background: rgba(239, 68, 68, 0.115);
+}
+
+html[data-theme="dark"] .timeline-item-tool_call.tool-call-running:hover {
+    background: rgba(37, 99, 235, 0.14);
+}
+
+html[data-theme="dark"] .timeline-item-tool_call.tool-call-completed:hover {
+    background: rgba(16, 185, 129, 0.14);
+}
+
+html[data-theme="dark"] .timeline-item-tool_call.tool-call-failed:hover {
+    background: rgba(239, 68, 68, 0.16);
+}
+
+html[data-theme="dark"] .timeline-item-warning,
+html[data-theme="dark"] .timeline-item-user_interrupt_continue {
+    background: rgba(251, 191, 36, 0.08);
 }
 
 html[data-theme="dark"] .message.assistant .message-bubble {

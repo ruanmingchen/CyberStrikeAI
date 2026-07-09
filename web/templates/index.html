@@ -3253,7 +3253,15 @@
                                         </div>
                                         <div class="form-group">
                                             <label for="knowledge-embedding-model" data-i18n="settingsBasic.modelName">模型名称</label>
-                                            <input type="text" id="knowledge-embedding-model" data-i18n="settingsBasic.embeddingModelPlaceholder" data-i18n-attr="placeholder" placeholder="text-embedding-v4" />
+                                            <div class="model-pick-row">
+                                                <input type="text" id="knowledge-embedding-model" class="model-pick-input" data-i18n="settingsBasic.embeddingModelPlaceholder" data-i18n-attr="placeholder" placeholder="text-embedding-v4" />
+                                                <select id="knowledge-embedding-model-select" class="model-pick-native" style="display: none;" aria-hidden="true" tabindex="-1">
+                                                    <option value="" disabled data-i18n="settingsBasic.modelsListSelectPlaceholder">请选择模型</option>
+                                                </select>
+                                                <a href="javascript:void(0)" id="fetch-knowledge-embedding-models-btn" class="model-pick-fetch-link" onclick="fetchModelList('knowledgeEmbedding')" data-i18n="settingsBasic.fetchModels">获取列表</a>
+                                            </div>
+                                            <small id="fetch-knowledge-embedding-models-hint" class="form-hint" style="display: none; font-size: 0.75rem; margin-top: 4px;"></small>
+                                            <span id="fetch-knowledge-embedding-models-result" style="font-size: 0.75rem; margin-top: 2px; display: block;"></span>
                                         </div>
 
                                         <div class="settings-subsection-header">

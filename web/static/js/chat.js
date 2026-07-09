@@ -2397,7 +2397,10 @@ function isEinoAgentHeartbeatProgress(detail) {
 
 function filterNoiseProcessDetails(details) {
     if (!Array.isArray(details)) return details;
-    return details.filter(function (d) { return !isEinoAgentHeartbeatProgress(d); });
+    return details.filter(function (d) {
+        if (isEinoAgentHeartbeatProgress(d)) return false;
+        return !(d && d.eventType === 'tool_calls_detected');
+    });
 }
 
 function dedupeConsecutiveProcessDetailRows(details) {
@@ -2704,6 +2707,7 @@ function renderProcessDetails(messageId, processDetails, options) {
             title: itemTitle,
             message: detail.message || '',
             data: data,
+            processDetailId: detail.id || '',
             createdAt: detail.createdAt
         };
         if (eventType === 'tool_call' && data._mergedResult) {
@@ -3052,7 +3056,62 @@ function ensureMcpCallButtons(messageElement) {
 window.ensureMcpCallButtons = ensureMcpCallButtons;
 window.appendMcpCallButtons = appendMcpCallButtons;
 
-// 批量获取工具名称并更新按钮（消除 N 次单独 API 请求，合并为 1 次）
+function normalizeToolExecutionSummary(raw) {
+    if (typeof raw === 'string') {
+        return { toolName: raw, status: '' };
+    }
+    if (raw && typeof raw === 'object') {
+        return {
+            toolName: raw.toolName || raw.name || '',
+            status: raw.status || ''
+        };
+    }
+    return { toolName: '', status: '' };
+}
+
+function getToolExecutionStatusLabel(status) {
+    const normalized = String(status || '').toLowerCase();
+    if (typeof window.t === 'function') {
+        const keyMap = {
+            completed: 'mcpMonitor.statusSuccess',
+            failed: 'mcpMonitor.statusFailed',
+            running: 'mcpMonitor.statusRunning',
+            cancelled: 'mcpMonitor.statusCancelled',
+            pending: 'mcpMonitor.statusPending'
+        };
+        const key = keyMap[normalized];
+        if (key) {
+            const translated = window.t(key);
+            if (translated && translated !== key) return translated;
+        }
+    }
+    const fallback = {
+        completed: '成功',
+        failed: '失败',
+        running: '运行中',
+        cancelled: '已取消',
+        pending: '等待中'
+    };
+    return fallback[normalized] || '';
+}
+
+function renderToolExecutionButtonContent(btn, displayToolName, index, status) {
+    const safeToolName = escapeHtml(displayToolName || (typeof window.t === 'function' ? window.t('chat.unknownTool') : '未知工具'));
+    const safeIndex = escapeHtml(index || '');
+    const statusText = getToolExecutionStatusLabel(status);
+    const normalizedStatus = String(status || '').toLowerCase();
+    const label = safeIndex ? `${safeToolName} #${safeIndex}` : safeToolName;
+    btn.innerHTML = '<span class="mcp-tool-name">' + label + '</span>';
+    if (!statusText) {
+        btn.removeAttribute('data-status');
+        btn.removeAttribute('title');
+        return;
+    }
+    btn.dataset.status = normalizedStatus;
+    btn.title = statusText;
+}
+
+// 批量获取工具摘要并更新按钮（消除 N 次单独 API 请求，合并为 1 次）
 async function batchUpdateButtonToolNames(buttonsContainer, executionIds) {
     if (!executionIds || executionIds.length === 0) return;
     try {
@@ -3062,17 +3121,17 @@ async function batchUpdateButtonToolNames(buttonsContainer, executionIds) {
             body: JSON.stringify({ ids: executionIds }),
         });
         if (!response.ok) return;
-        const nameMap = await response.json(); // { execId: toolName }
+        const nameMap = await response.json(); // { execId: toolName } 或 { execId: { toolName, status } }
         // 更新对应按钮的文本
         const buttons = buttonsContainer.querySelectorAll('.mcp-detail-btn[data-exec-id]');
         buttons.forEach(btn => {
             const execId = btn.dataset.execId;
             const index = btn.dataset.execIndex;
-            const toolName = nameMap[execId];
+            const summary = normalizeToolExecutionSummary(nameMap[execId]);
+            const toolName = summary.toolName;
             if (toolName) {
                 const displayToolName = toolName.includes('::') ? toolName.split('::')[1] : toolName;
-                const span = btn.querySelector('span');
-                if (span) span.textContent = `${displayToolName} #${index}`;
+                renderToolExecutionButtonContent(btn, displayToolName, index, summary.status);
             }
         });
     } catch (error) {

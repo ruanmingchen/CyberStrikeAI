@@ -213,12 +213,12 @@ html[data-theme="dark"] .c2-session-main-empty__icon {
     min-width: 0;
     min-height: 40px;
     padding: 10px 14px;
-    border: 1px solid var(--c2-border);
+    border: 1.5px solid var(--c2-border);
     border-radius: var(--c2-radius-sm);
     background: var(--c2-surface);
     color: var(--c2-text);
     font-size: 14px;
-    line-height: 1.25;
+    line-height: 1.5;
     cursor: pointer;
     font-family: inherit;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -230,7 +230,16 @@ html[data-theme="dark"] .c2-session-main-empty__icon {
 
 .c2-form-select-ui.open .c2-form-select-trigger {
     border-color: var(--c2-accent);
-    box-shadow: 0 0 0 2px var(--c2-accent-dim);
+    box-shadow: 0 0 0 3px var(--c2-accent-dim);
+}
+
+html[data-theme="dark"] .c2-modal .c2-form-select-trigger {
+    background: var(--c2-surface);
+    border-color: var(--c2-border);
+}
+
+html[data-theme="dark"] .c2-modal .c2-form-select-ui.open .c2-form-select-trigger {
+    border-color: var(--c2-accent);
 }
 
 .c2-form-select-ui.open {

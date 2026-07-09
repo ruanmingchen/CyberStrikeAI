@@ -2311,9 +2311,15 @@ function initModelListControls() {
         hitlAuditProv.dataset.modelListBound = '1';
         hitlAuditProv.addEventListener('change', syncModelListFetchButtons);
     }
+    const knowledgeEmbeddingProv = document.getElementById('knowledge-embedding-provider');
+    if (knowledgeEmbeddingProv && !knowledgeEmbeddingProv.dataset.modelListBound) {
+        knowledgeEmbeddingProv.dataset.modelListBound = '1';
+        knowledgeEmbeddingProv.addEventListener('change', syncModelListFetchButtons);
+    }
     bindModelSelect('openai');
     bindModelSelect('vision');
     bindModelSelect('hitlAudit');
+    bindModelSelect('knowledgeEmbedding');
     syncModelListFetchButtons();
 }
 
@@ -2323,6 +2329,9 @@ function modelSelectIds(scope) {
     }
     if (scope === 'hitlAudit') {
         return { selectId: 'hitl-audit-model-select', inputId: 'hitl-audit-model-name' };
+    }
+    if (scope === 'knowledgeEmbedding') {
+        return { selectId: 'knowledge-embedding-model-select', inputId: 'knowledge-embedding-model' };
     }
     return { selectId: 'openai-model-select', inputId: 'openai-model' };
 }
@@ -2356,6 +2365,15 @@ function resolveModelListCredentials(scope) {
         const baseUrl = (document.getElementById('hitl-audit-model-base-url')?.value || '').trim()
             || (document.getElementById('openai-base-url')?.value || '').trim();
         const apiKey = (document.getElementById('hitl-audit-model-api-key')?.value || '').trim()
+            || (document.getElementById('openai-api-key')?.value || '').trim();
+        return { provider, base_url: baseUrl, api_key: apiKey };
+    }
+    if (scope === 'knowledgeEmbedding') {
+        const kp = (document.getElementById('knowledge-embedding-provider')?.value || '').trim();
+        const provider = kp || document.getElementById('openai-provider')?.value || 'openai';
+        const baseUrl = (document.getElementById('knowledge-embedding-base-url')?.value || '').trim()
+            || (document.getElementById('openai-base-url')?.value || '').trim();
+        const apiKey = (document.getElementById('knowledge-embedding-api-key')?.value || '').trim()
             || (document.getElementById('openai-api-key')?.value || '').trim();
         return { provider, base_url: baseUrl, api_key: apiKey };
     }
@@ -2444,6 +2462,32 @@ function syncModelListFetchButtons() {
             hitlAuditHint.style.display = 'none';
         }
     }
+
+    const kp = (document.getElementById('knowledge-embedding-provider')?.value || '').trim();
+    const knowledgeEmbeddingEffectiveProv = kp || openaiProv;
+    const knowledgeEmbeddingBtn = document.getElementById('fetch-knowledge-embedding-models-btn');
+    const knowledgeEmbeddingHint = document.getElementById('fetch-knowledge-embedding-models-hint');
+    const knowledgeEmbeddingSelect = document.getElementById('knowledge-embedding-model-select');
+    const isClaudeKnowledgeEmbedding = knowledgeEmbeddingEffectiveProv === 'claude';
+    if (knowledgeEmbeddingBtn) {
+        knowledgeEmbeddingBtn.style.display = isClaudeKnowledgeEmbedding ? 'none' : '';
+    }
+    if (knowledgeEmbeddingSelect && isClaudeKnowledgeEmbedding) {
+        knowledgeEmbeddingSelect.style.display = 'none';
+        const knowledgeEmbeddingWrap = modelPickSelectMap['knowledge-embedding-model-select'];
+        if (knowledgeEmbeddingWrap) knowledgeEmbeddingWrap.wrapper.style.display = 'none';
+    } else if (knowledgeEmbeddingSelect && !isClaudeKnowledgeEmbedding) {
+        syncModelPickDropdown('knowledge-embedding-model-select');
+    }
+    if (knowledgeEmbeddingHint) {
+        if (isClaudeKnowledgeEmbedding) {
+            knowledgeEmbeddingHint.textContent = tFn('settingsBasic.modelsListClaudeHint');
+            knowledgeEmbeddingHint.style.display = '';
+        } else {
+            knowledgeEmbeddingHint.textContent = '';
+            knowledgeEmbeddingHint.style.display = 'none';
+        }
+    }
 }
 
 function populateModelSelect(scope, models, currentValue) {
@@ -2483,12 +2527,27 @@ function populateModelSelect(scope, models, currentValue) {
 async function fetchModelList(scope) {
     const tFn = typeof window.t === 'function' ? window.t : (k) => k;
     const creds = resolveModelListCredentials(scope);
-    const btnId = scope === 'vision'
-        ? 'fetch-vision-models-btn'
-        : (scope === 'hitlAudit' ? 'fetch-hitl-audit-models-btn' : 'fetch-openai-models-btn');
-    const resultId = scope === 'vision'
-        ? 'fetch-vision-models-result'
-        : (scope === 'hitlAudit' ? 'fetch-hitl-audit-models-result' : 'fetch-openai-models-result');
+    const modelListUiIds = {
+        openai: {
+            btnId: 'fetch-openai-models-btn',
+            resultId: 'fetch-openai-models-result'
+        },
+        vision: {
+            btnId: 'fetch-vision-models-btn',
+            resultId: 'fetch-vision-models-result'
+        },
+        hitlAudit: {
+            btnId: 'fetch-hitl-audit-models-btn',
+            resultId: 'fetch-hitl-audit-models-result'
+        },
+        knowledgeEmbedding: {
+            btnId: 'fetch-knowledge-embedding-models-btn',
+            resultId: 'fetch-knowledge-embedding-models-result'
+        }
+    };
+    const uiIds = modelListUiIds[scope] || modelListUiIds.openai;
+    const btnId = uiIds.btnId;
+    const resultId = uiIds.resultId;
     const inputId = modelSelectIds(scope).inputId;
     const btn = document.getElementById(btnId);
     const resultEl = document.getElementById(resultId);
