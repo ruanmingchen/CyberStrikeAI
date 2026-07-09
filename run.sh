@@ -82,16 +82,10 @@ echo ""
 sleep 1
 
 CONFIG_FILE="$ROOT_DIR/config.yaml"
+EXAMPLE_CONFIG_FILE="$ROOT_DIR/config.example.yaml"
 VENV_DIR="$ROOT_DIR/venv"
 REQUIREMENTS_FILE="$ROOT_DIR/requirements.txt"
 BINARY_NAME="cyberstrike-ai"
-
-# Check config file
-if [ ! -f "$CONFIG_FILE" ]; then
-    error "Config file config.yaml not found"
-    info "Make sure you run this script from the project root"
-    exit 1
-fi
 
 # Check Python environment
 check_python() {
@@ -369,6 +363,11 @@ main() {
     # Environment checks
     info "Checking runtime environment..."
     check_python
+    if [ ! -f "$CONFIG_FILE" ] && [ ! -f "$EXAMPLE_CONFIG_FILE" ]; then
+        error "config.yaml not found, and config.example.yaml is missing"
+        info "The server binary creates config.yaml from config.example.yaml on first start"
+        exit 1
+    fi
     check_go
     echo ""
     
