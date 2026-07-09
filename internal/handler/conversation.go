@@ -185,6 +185,7 @@ const (
 // 查询参数：
 //   - summary=1：仅返回摘要（total / iterationCount / maxIteration）
 //   - limit + offset：分页返回 processDetails（未指定 limit 时默认 50 条）
+//   - anchorId：返回包含该过程详情锚点的一页，适合从工具按钮精准定位
 //   - full=1：显式返回全量 processDetails（用于导出/兼容旧集成，不建议 UI 展开时使用）
 func (h *ConversationHandler) GetMessageProcessDetails(c *gin.Context) {
 	messageID := c.Param("id")
@@ -242,6 +243,19 @@ func (h *ConversationHandler) GetMessageProcessDetails(c *gin.Context) {
 	offset, _ := strconv.Atoi(strings.TrimSpace(c.Query("offset")))
 	if offset < 0 {
 		offset = 0
+	}
+	anchorID := strings.TrimSpace(c.Query("anchorId"))
+	if anchorID != "" {
+		anchorOffset, err := h.db.GetProcessDetailOffset(messageID, anchorID)
+		if err != nil {
+			h.logger.Warn("获取过程详情锚点位置失败", zap.Error(err), zap.String("messageID", messageID), zap.String("anchorID", anchorID))
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+			return
+		}
+		offset = anchorOffset - limit/3
+		if offset < 0 {
+			offset = 0
+		}
 	}
 
 	details, total, err := h.db.GetProcessDetailsPage(messageID, limit, offset)
