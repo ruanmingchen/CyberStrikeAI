@@ -83,12 +83,6 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 	// CORS中间件
 	router.Use(corsMiddleware())
 
-	// 认证管理器
-	authManager, err := security.NewAuthManager(cfg.Auth.Password, cfg.Auth.SessionDurationHours)
-	if err != nil {
-		return nil, fmt.Errorf("初始化认证失败: %w", err)
-	}
-
 	// 初始化数据库
 	dbPath := cfg.Database.Path
 	if dbPath == "" {
@@ -103,6 +97,15 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 	db, err := database.NewDB(dbPath, log.Logger)
 	if err != nil {
 		return nil, fmt.Errorf("初始化数据库失败: %w", err)
+	}
+
+	// 认证管理器（数据库初始化后挂载 RBAC，以兼容旧的单密码配置）
+	authManager, err := security.NewAuthManager(cfg.Auth.Password, cfg.Auth.SessionDurationHours)
+	if err != nil {
+		return nil, fmt.Errorf("初始化认证失败: %w", err)
+	}
+	if err := authManager.AttachRBACStore(db); err != nil {
+		return nil, fmt.Errorf("初始化RBAC失败: %w", err)
 	}
 
 	auditSvc := audit.NewService(db, cfg, log.Logger)
@@ -360,6 +363,9 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 	attackChainHandler := handler.NewAttackChainHandler(db, &cfg.OpenAI, log.Logger)
 	vulnerabilityHandler := handler.NewVulnerabilityHandler(db, log.Logger)
 	projectHandler := handler.NewProjectHandler(db, log.Logger)
+	rbacHandler := handler.NewRBACHandler(db, log.Logger)
+	rbacHandler.SetAudit(auditSvc)
+	rbacHandler.SetAuthManager(authManager)
 	workflowHandler := handler.NewWorkflowHandler(db, log.Logger)
 	workflowHandler.SetAudit(auditSvc)
 	workflowHandler.SetRuntime(agent, cfg)
@@ -535,6 +541,7 @@ func New(cfg *config.Config, log *logger.Logger, configPath string) (*App, error
 		terminalHandler,
 		app.c2Handler,
 		auditHandler,
+		rbacHandler,
 		mcpServer,
 		authManager,
 		openAPIHandler,
@@ -818,6 +825,7 @@ func setupRoutes(
 	terminalHandler *handler.TerminalHandler,
 	c2Handler *handler.C2Handler,
 	auditHandler *handler.AuditHandler,
+	rbacHandler *handler.RBACHandler,
 	mcpServer *mcp.Server,
 	authManager *security.AuthManager,
 	openAPIHandler *handler.OpenAPIHandler,
@@ -830,7 +838,7 @@ func setupRoutes(
 	{
 		authRoutes.POST("/login", authHandler.Login)
 		authRoutes.POST("/logout", security.AuthMiddleware(authManager), authHandler.Logout)
-		authRoutes.POST("/change-password", security.AuthMiddleware(authManager), authHandler.ChangePassword)
+		authRoutes.POST("/change-password", security.AuthMiddleware(authManager), security.RequirePermission("auth:self"), authHandler.ChangePassword)
 		authRoutes.GET("/validate", security.AuthMiddleware(authManager), authHandler.Validate)
 	}
 
@@ -848,7 +856,23 @@ func setupRoutes(
 
 	protected := api.Group("")
 	protected.Use(security.AuthMiddleware(authManager))
+	protected.Use(security.RBACMiddleware(app.db))
 	{
+		protected.GET("/rbac/me", rbacHandler.Me)
+		protected.GET("/rbac/metadata", rbacHandler.Metadata)
+		protected.GET("/rbac/users", rbacHandler.ListUsers)
+		protected.POST("/rbac/users", rbacHandler.CreateUser)
+		protected.PUT("/rbac/users/:id", rbacHandler.UpdateUser)
+		protected.DELETE("/rbac/users/:id", rbacHandler.DeleteUser)
+		protected.GET("/rbac/roles", rbacHandler.ListRoles)
+		protected.POST("/rbac/roles", rbacHandler.CreateRole)
+		protected.PUT("/rbac/roles/:id", rbacHandler.UpdateRole)
+		protected.DELETE("/rbac/roles/:id", rbacHandler.DeleteRole)
+		protected.GET("/rbac/resource-assignments", rbacHandler.ListResourceAssignments)
+		protected.GET("/rbac/resources", rbacHandler.ListAssignableResources)
+		protected.POST("/rbac/resource-assignments", rbacHandler.AssignResource)
+		protected.DELETE("/rbac/resource-assignments/:id", rbacHandler.DeleteResourceAssignment)
+
 		// 机器人测试（需登录）：POST /api/robot/test，body: {"platform":"dingtalk","user_id":"test","text":"帮助"}，用于验证机器人逻辑
 		protected.POST("/robot/test", robotHandler.HandleRobotTest)
 
