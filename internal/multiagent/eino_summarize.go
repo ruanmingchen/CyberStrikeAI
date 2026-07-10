@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"cyberstrike-ai/internal/agent"
 	"cyberstrike-ai/internal/config"
@@ -107,6 +106,12 @@ func newEinoSummarizationMiddleware(
 		userLedgerMaxRunes = mwCfg.SummarizationUserIntentLedgerMaxRunesEffective()
 		userLedgerEntryMaxRunes = mwCfg.SummarizationUserIntentLedgerEntryMaxRunesEffective()
 	}
+	// The ledger is merged into the leading system message and cannot be removed as
+	// an ordinary conversation round. Bound it relative to the configured window so
+	// it cannot crowd out the summary/latest turn or trip the final fail-closed guard.
+	ledgerWindowCap := modelFacingRuneBudget(maxTotal, 0.20)
+	userLedgerMaxRunes = minPositiveInt(userLedgerMaxRunes, ledgerWindowCap)
+	userLedgerEntryMaxRunes = minPositiveInt(userLedgerEntryMaxRunes, userLedgerMaxRunes)
 	// Keep enough safety margin for tokenizer/model-side accounting mismatch.
 	trigger := int(float64(maxTotal) * triggerRatio)
 	if trigger < 4096 {
@@ -131,6 +136,14 @@ func newEinoSummarizationMiddleware(
 	}
 	if recentTrailMax > trigger/2 {
 		recentTrailMax = trigger / 2
+	}
+	// The summarization request itself needs output headroom. A trigger is not a hard
+	// request limit: one large turn can jump far beyond it. Bound the actual summary
+	// model input to 60% of the configured context window and keep complete recent
+	// rounds so tool_call/tool_result pairs are never split.
+	summaryInputMax := int(float64(maxTotal) * 0.6)
+	if summaryInputMax < 4096 {
+		summaryInputMax = 4096
 	}
 	transcriptPath := ""
 	if conv := strings.TrimSpace(conversationID); conv != "" {
@@ -169,6 +182,30 @@ func newEinoSummarizationMiddleware(
 	mw, err := summarization.New(ctx, &summarization.Config{
 		Model:        summaryModel,
 		ModelOptions: summaryModelOpts,
+		GenModelInput: func(ctx context.Context, sysInstruction, userInstruction adk.Message, originalMsgs []adk.Message) ([]adk.Message, error) {
+			if transcriptPath != "" && len(originalMsgs) > 0 {
+				if werr := writeSummarizationTranscript(transcriptPath, originalMsgs); werr != nil && logger != nil {
+					logger.Warn("eino summarization transcript preflight 写入失败",
+						zap.String("path", transcriptPath), zap.Error(werr))
+				}
+			}
+			input, dropped, berr := buildBudgetedSummarizationModelInput(
+				ctx, sysInstruction, userInstruction, originalMsgs, tokenCounter, summaryInputMax,
+			)
+			if logger != nil && (berr != nil || dropped > 0) {
+				fields := []zap.Field{
+					zap.Int("max_input_tokens", summaryInputMax),
+					zap.Int("dropped_rounds", dropped),
+				}
+				if berr != nil {
+					fields = append(fields, zap.Error(berr))
+					logger.Warn("eino summarization input budget failed", fields...)
+				} else {
+					logger.Info("eino summarization input bounded", fields...)
+				}
+			}
+			return input, berr
+		},
 		Trigger: &summarization.TriggerCondition{
 			ContextTokens: trigger,
 		},
@@ -195,7 +232,7 @@ func newEinoSummarizationMiddleware(
 		},
 		Finalize: func(ctx context.Context, originalMessages []adk.Message, summary adk.Message) ([]adk.Message, error) {
 			summary = stripAnalysisFromSummarizationMessage(summary)
-			userLedger := buildOriginalUserIntentLedgerMessageFromStore(db, conversationID, originalMessages, userLedgerMaxRunes, userLedgerEntryMaxRunes, logger)
+			userLedger := buildOriginalUserIntentLedgerMessage(originalMessages, userLedgerMaxRunes, userLedgerEntryMaxRunes)
 			compactionMessages := stripOriginalUserIntentLedgerFromMessages(originalMessages)
 			out, ferr := summarizeFinalizeWithRecentAssistantToolTrail(ctx, compactionMessages, summary, tokenCounter, recentTrailMax)
 			if ferr != nil {
@@ -238,59 +275,69 @@ func newEinoSummarizationMiddleware(
 	return mw, nil
 }
 
-func buildOriginalUserIntentLedgerMessageFromStore(
-	db *database.DB,
-	conversationID string,
-	fallbackMessages []adk.Message,
-	maxRunes int,
-	entryMaxRunes int,
-	logger *zap.Logger,
-) adk.Message {
-	conversationID = strings.TrimSpace(conversationID)
-	if db == nil || conversationID == "" {
-		return buildOriginalUserIntentLedgerMessage(fallbackMessages, maxRunes, entryMaxRunes)
-	}
-	msgs, err := db.GetMessages(conversationID)
+// buildBudgetedSummarizationModelInput builds the exact payload sent to the summary model.
+// It retains the newest complete conversation rounds within budget and emits an explicit
+// marker when older rounds are omitted. The full pre-compaction transcript is persisted
+// separately; omitted raw messages never become model-facing history again.
+func buildBudgetedSummarizationModelInput(
+	ctx context.Context,
+	sysInstruction adk.Message,
+	userInstruction adk.Message,
+	originalMsgs []adk.Message,
+	tokenCounter summarization.TokenCounterFunc,
+	maxTokens int,
+) ([]adk.Message, int, error) {
+	base := []adk.Message{sysInstruction, userInstruction}
+	baseTokens, err := tokenCounter(ctx, &summarization.TokenCounterInput{Messages: base})
 	if err != nil {
-		if logger != nil {
-			logger.Warn("summarization: 从数据库读取原始用户消息失败，回退到当前上下文",
-				zap.String("conversationId", conversationID),
-				zap.Error(err),
-			)
-		}
-		return buildOriginalUserIntentLedgerMessage(fallbackMessages, maxRunes, entryMaxRunes)
+		return nil, 0, err
 	}
-	userMsgs := make([]adk.Message, 0, len(msgs))
-	for _, msg := range msgs {
-		if strings.ToLower(strings.TrimSpace(msg.Role)) != "user" {
-			continue
-		}
-		content := strings.TrimSpace(msg.Content)
-		if content == "" {
-			continue
-		}
-		userMsgs = append(userMsgs, schema.UserMessage(formatStoredUserLedgerText(msg)))
+	remaining := maxTokens - baseTokens
+	markerTemplate := schema.UserMessage("[Context budget guard omitted older conversation rounds; summarize the retained recent rounds and preserve the omission marker.]")
+	markerTokens, err := tokenCounter(ctx, &summarization.TokenCounterInput{Messages: []adk.Message{markerTemplate}})
+	if err != nil {
+		return nil, 0, err
 	}
-	if len(userMsgs) == 0 {
-		return buildOriginalUserIntentLedgerMessage(fallbackMessages, maxRunes, entryMaxRunes)
+	remaining -= markerTokens
+	if remaining < 0 {
+		remaining = 0
 	}
-	return buildOriginalUserIntentLedgerMessage(userMsgs, maxRunes, entryMaxRunes)
-}
 
-func formatStoredUserLedgerText(msg database.Message) string {
-	var parts []string
-	if id := strings.TrimSpace(msg.ID); id != "" {
-		parts = append(parts, "message_id="+id)
+	contextMsgs := make([]adk.Message, 0, len(originalMsgs))
+	for _, msg := range originalMsgs {
+		if msg != nil && msg.Role != schema.System {
+			contextMsgs = append(contextMsgs, msg)
+		}
 	}
-	if !msg.CreatedAt.IsZero() {
-		parts = append(parts, "created_at="+msg.CreatedAt.Format(time.RFC3339Nano))
+	rounds := splitMessagesIntoRounds(contextMsgs)
+	selectedReverse := make([]messageRound, 0, len(rounds))
+	used := 0
+	for i := len(rounds) - 1; i >= 0; i-- {
+		n, countErr := tokenCounter(ctx, &summarization.TokenCounterInput{Messages: rounds[i].messages})
+		if countErr != nil {
+			return nil, 0, countErr
+		}
+		if used+n > remaining {
+			break
+		}
+		used += n
+		selectedReverse = append(selectedReverse, rounds[i])
 	}
-	meta := strings.Join(parts, " ")
-	content := strings.TrimSpace(msg.Content)
-	if meta == "" {
-		return content
+
+	dropped := len(rounds) - len(selectedReverse)
+	input := make([]adk.Message, 0, 3+len(contextMsgs))
+	input = append(input, sysInstruction)
+	if dropped > 0 {
+		input = append(input, schema.UserMessage(fmt.Sprintf(
+			"[Context budget guard omitted %d older conversation round(s); summarize the retained recent rounds and preserve the omission marker.]",
+			dropped,
+		)))
 	}
-	return meta + "\n" + content
+	for i := len(selectedReverse) - 1; i >= 0; i-- {
+		input = append(input, selectedReverse[i].messages...)
+	}
+	input = append(input, userInstruction)
+	return input, dropped, nil
 }
 
 // refreshFactIndexInMessages 在 summarization 压缩后，用 DB 最新索引替换 system 中已有的项目黑板索引段。

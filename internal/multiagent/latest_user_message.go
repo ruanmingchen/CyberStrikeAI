@@ -21,6 +21,9 @@ func prepareLatestUserMessageForModel(userMessage string, appCfg *config.Config,
 		mwCfg = &zero
 	}
 	maxRunes := mwCfg.LatestUserMessageMaxRunesEffective()
+	if appCfg != nil {
+		maxRunes = minPositiveInt(maxRunes, modelFacingRuneBudget(appCfg.OpenAI.MaxTotalTokens, 0.20))
+	}
 	if maxRunes <= 0 || utf8RuneLen(userMessage) <= maxRunes {
 		return userMessage
 	}
@@ -63,6 +66,30 @@ func prepareLatestUserMessageForModel(userMessage string, appCfg *config.Config,
 		sb.WriteString("\n</latest_user_message_preview_tail>\n")
 	}
 	return strings.TrimSpace(sb.String())
+}
+
+func modelFacingRuneBudget(maxTotalTokens int, ratio float64) int {
+	if maxTotalTokens <= 0 {
+		maxTotalTokens = 120000
+	}
+	if ratio <= 0 || ratio >= 1 {
+		ratio = 0.20
+	}
+	budget := int(float64(maxTotalTokens) * ratio)
+	if budget < 1024 {
+		budget = 1024
+	}
+	return budget
+}
+
+func minPositiveInt(a, b int) int {
+	if a <= 0 {
+		return b
+	}
+	if b <= 0 || a < b {
+		return a
+	}
+	return b
 }
 
 func normalizeLatestUserPreviewBudget(maxRunes, headRunes, tailRunes int) (int, int) {

@@ -57,6 +57,33 @@ func variableTokenCounter() summarization.TokenCounterFunc {
 	}
 }
 
+func TestBuildBudgetedSummarizationModelInputKeepsRecentCompleteRounds(t *testing.T) {
+	msgs := []adk.Message{
+		schema.UserMessage("old-user"),
+		schema.AssistantMessage("old-answer", nil),
+		schema.UserMessage("latest-user"),
+		assistantToolCallsMsg("", "call-latest"),
+		schema.ToolMessage("latest-tool-result", "call-latest"),
+	}
+	input, dropped, err := buildBudgetedSummarizationModelInput(
+		context.Background(), schema.SystemMessage("summary-system"), schema.UserMessage("summary-instruction"),
+		msgs, fixedTokenCounter(2), 7,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dropped == 0 {
+		t.Fatal("expected older rounds to be omitted")
+	}
+	joined := formatSummarizationTranscript(input)
+	if strings.Contains(joined, "old-user") || strings.Contains(joined, "old-answer") {
+		t.Fatalf("old rounds leaked into bounded input: %s", joined)
+	}
+	if !strings.Contains(joined, "latest-user") || !strings.Contains(joined, "latest-tool-result") {
+		t.Fatalf("latest complete rounds missing: %s", joined)
+	}
+}
+
 func TestSplitMessagesIntoRounds_Complex(t *testing.T) {
 	msgs := []adk.Message{
 		schema.UserMessage("q1"),
@@ -499,46 +526,17 @@ func TestRefreshFactIndexInMessages(t *testing.T) {
 	}
 }
 
-func TestBuildOriginalUserIntentLedgerMessageFromStore_UsesDatabaseAsCanonicalSource(t *testing.T) {
-	t.Parallel()
-	dbPath := filepath.Join(t.TempDir(), "summarize-user-ledger.db")
-	db, err := database.NewDB(dbPath, zap.NewNop())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
-	conv, err := db.CreateConversation("ledger", database.ConversationCreateMeta{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	stored, err := db.AddMessage(conv.ID, "user", "原始用户输入：只测 staging，不要碰 prod。", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.AddMessage(conv.ID, "assistant", "处理中...", nil); err != nil {
-		t.Fatal(err)
-	}
-
-	ledger := buildOriginalUserIntentLedgerMessageFromStore(
-		db,
-		conv.ID,
-		[]adk.Message{schema.UserMessage("内存里的派生/续跑消息，不应作为权威源。")},
+func TestBuildOriginalUserIntentLedgerUsesOnlyModelFacingMessages(t *testing.T) {
+	ledger := buildOriginalUserIntentLedgerMessage(
+		[]adk.Message{schema.UserMessage("模型实际看到的裁剪预览")},
 		config.DefaultSummarizationUserIntentLedgerMaxRunes,
 		config.DefaultSummarizationUserIntentLedgerEntryMaxRunes,
-		zap.NewNop(),
 	)
 	if ledger == nil {
 		t.Fatal("expected ledger message")
 	}
 	body := ledger.Content
-	if !strings.Contains(body, stored.ID) {
-		t.Fatalf("ledger should include canonical DB message id %q: %q", stored.ID, body)
-	}
-	if !strings.Contains(body, "只测 staging，不要碰 prod") {
-		t.Fatalf("ledger should include stored user content: %q", body)
-	}
-	if strings.Contains(body, "内存里的派生") {
-		t.Fatalf("fallback in-memory user message should not be used when DB has user messages: %q", body)
+	if !strings.Contains(body, "模型实际看到的裁剪预览") {
+		t.Fatalf("ledger should preserve the model-facing user message: %q", body)
 	}
 }

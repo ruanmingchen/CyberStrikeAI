@@ -33,6 +33,7 @@ func TestIsEinoTransientRunError(t *testing.T) {
 		{"iteration limit", errors.New("max iteration reached"), false},
 		{"canceled", context.Canceled, false},
 		{"deadline", context.DeadlineExceeded, false},
+		{"model hard budget containing 500", errors.New("model input exceeds configured hard budget after preserving the latest round: tokens=20500 max=19500 phase=test"), false},
 		{"auth", errors.New("invalid api key"), false},
 	}
 	for _, tc := range cases {

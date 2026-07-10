@@ -10,7 +10,9 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
+	"unicode/utf8"
 
 	"cyberstrike-ai/internal/agent"
 	"cyberstrike-ai/internal/agents"
@@ -49,6 +51,8 @@ type toolCallPendingInfo struct {
 	EinoAgent  string
 	EinoRole   string
 }
+
+var fallbackToolCallSequence atomic.Uint64
 
 // RunDeepAgent 使用 Eino 多代理预置编排执行一轮对话（deep / plan_execute / supervisor；流式事件通过 progress 回调输出）。
 // orchestrationOverride 非空时优先（如聊天/WebShell 请求体）；否则用 multi_agent.orchestration（遗留 yaml）；皆空则按 deep。
@@ -247,6 +251,7 @@ func RunDeepAgent(
 				phase:          "sub_agent:" + id,
 				summarization:  subSumMw,
 				modelName:      appCfg.OpenAI.Model,
+				maxTotalTokens: appCfg.OpenAI.MaxTotalTokens,
 				conversationID: conversationID,
 			})
 
@@ -406,6 +411,7 @@ func RunDeepAgent(
 		phase:          "deep_orchestrator",
 		summarization:  mainSumMw,
 		modelName:      appCfg.OpenAI.Model,
+		maxTotalTokens: appCfg.OpenAI.MaxTotalTokens,
 		conversationID: conversationID,
 		trace:          modelFacingTrace,
 	})
@@ -422,6 +428,7 @@ func RunDeepAgent(
 		phase:          "supervisor_orchestrator",
 		summarization:  mainSumMw,
 		modelName:      appCfg.OpenAI.Model,
+		maxTotalTokens: appCfg.OpenAI.MaxTotalTokens,
 		conversationID: conversationID,
 		trace:          modelFacingTrace,
 	})
@@ -495,6 +502,7 @@ func RunDeepAgent(
 				phase:          "plan_execute_planner_replanner",
 				summarization:  mainSumMw,
 				modelName:      appCfg.OpenAI.Model,
+				maxTotalTokens: appCfg.OpenAI.MaxTotalTokens,
 				conversationID: conversationID,
 				skipTrace:      true,
 			}),
@@ -642,11 +650,19 @@ func chatToolCallsToSchema(tcs []agent.ToolCall) []schema.ToolCall {
 	return out
 }
 
-// historyToMessages 将轨迹恢复的 ChatMessage 转为 Eino ADK 消息：**不裁剪条数、不按 token 预算截断**，
-// 并保留 user / assistant（含仅 tool_calls）/ tool，与库中 last_react 轨迹一致。
+// historyToMessages 将已保存的 model-facing 轨迹转为 Eino ADK 消息。
+// 新轨迹应已是模型实际看到的内容；对旧版本遗留的超大 tool 正文再做一次上限规范化，
+// 防止原始工具输出通过 last_react/checkpoint 绕过 reduction。
 func historyToMessages(history []agent.ChatMessage, appCfg *config.Config, mwCfg *config.MultiAgentEinoMiddlewareConfig) []adk.Message {
-	_ = appCfg
-	_ = mwCfg
+	toolContentMax := config.MultiAgentEinoMiddlewareConfig{}.ReductionMaxLengthForTruncEffective()
+	userContentMaxRunes := config.MultiAgentEinoMiddlewareConfig{}.LatestUserMessageMaxRunesEffective()
+	if mwCfg != nil {
+		toolContentMax = mwCfg.ReductionMaxLengthForTruncEffective()
+		userContentMaxRunes = mwCfg.LatestUserMessageMaxRunesEffective()
+	}
+	if appCfg != nil {
+		userContentMaxRunes = minPositiveInt(userContentMaxRunes, modelFacingRuneBudget(appCfg.OpenAI.MaxTotalTokens, 0.20))
+	}
 	if len(history) == 0 {
 		return nil
 	}
@@ -656,7 +672,11 @@ func historyToMessages(history []agent.ChatMessage, appCfg *config.Config, mwCfg
 		switch role {
 		case "user":
 			if strings.TrimSpace(h.Content) != "" {
-				raw = append(raw, schema.UserMessage(h.Content))
+				content := h.Content
+				if !h.ModelFacingTrace {
+					content = normalizeRestoredUserContent(content, userContentMaxRunes)
+				}
+				raw = append(raw, schema.UserMessage(content))
 			}
 		case "assistant":
 			toolSchema := chatToolCallsToSchema(h.ToolCalls)
@@ -676,12 +696,57 @@ func historyToMessages(history []agent.ChatMessage, appCfg *config.Config, mwCfg
 			if tn := strings.TrimSpace(h.ToolName); tn != "" {
 				opts = append(opts, schema.WithToolName(tn))
 			}
-			raw = append(raw, schema.ToolMessage(h.Content, h.ToolCallID, opts...))
+			content := h.Content
+			if !h.ModelFacingTrace {
+				content = normalizeRestoredToolContent(content, toolContentMax)
+			}
+			raw = append(raw, schema.ToolMessage(content, h.ToolCallID, opts...))
 		default:
 			continue
 		}
 	}
 	return raw
+}
+
+func normalizeRestoredUserContent(content string, maxRunes int) string {
+	if maxRunes <= 0 || utf8.RuneCountInString(content) <= maxRunes {
+		return content
+	}
+	runes := []rune(content)
+	const marker = "\n\n...[historical user input normalized to the model-facing budget]...\n\n"
+	markerRunes := []rune(marker)
+	budget := maxRunes - len(markerRunes)
+	if budget <= 0 {
+		end := maxRunes
+		if end > len(markerRunes) {
+			end = len(markerRunes)
+		}
+		return string(markerRunes[:end])
+	}
+	head := budget / 2
+	tail := budget - head
+	return string(runes[:head]) + marker + string(runes[len(runes)-tail:])
+}
+
+func normalizeRestoredToolContent(content string, maxBytes int) string {
+	if maxBytes <= 0 || len(content) <= maxBytes {
+		return content
+	}
+	const marker = "\n\n...[legacy tool output discarded during model-facing history migration]...\n\n"
+	budget := maxBytes - len(marker)
+	if budget <= 0 {
+		return marker
+	}
+	head := budget / 2
+	tail := budget - head
+	for head > 0 && !utf8.RuneStart(content[head]) {
+		head--
+	}
+	tailStart := len(content) - tail
+	for tailStart < len(content) && !utf8.RuneStart(content[tailStart]) {
+		tailStart++
+	}
+	return content[:head] + marker + content[tailStart:]
 }
 
 // mergeStreamingToolCallFragments 将流式多帧的 ToolCall 按 index 合并 arguments（与 schema.concatToolCalls 行为一致）。
@@ -870,7 +935,10 @@ func emitToolCallsFromMessage(
 		display := toolCallDisplayName(tc)
 		toolCallID := tc.ID
 		if toolCallID == "" && tc.Index != nil {
-			toolCallID = fmt.Sprintf("eino-stream-%d", *tc.Index)
+			// Stream indexes restart from zero for every model turn. Include a
+			// process-wide sequence so pending/result de-duplication cannot collide
+			// with an earlier batch in the same agent run.
+			toolCallID = fmt.Sprintf("eino-stream-%d-%d", fallbackToolCallSequence.Add(1), *tc.Index)
 		}
 		// Record pending tool calls for later tool_result correlation / recovery flushing.
 		// We intentionally record even for unknown tools to avoid "running" badge getting stuck.

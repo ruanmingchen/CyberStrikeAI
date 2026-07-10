@@ -35,6 +35,9 @@ func isEinoTransientRunError(err error) bool {
 	if msg == "" {
 		return false
 	}
+	if strings.Contains(msg, "model input exceeds configured hard budget") {
+		return false
+	}
 	transientMarkers := []string{
 		"406",
 		"429",
@@ -180,7 +183,7 @@ const (
 // einoMessagesForRunRestart 在退避后重新 Run 时选用最完整的上下文：
 // 1) ModelFacingTrace（与模型实际入参一致） 2) 事件流累积的 runAccumulatedMsgs 3) 初始 msgs。
 func einoMessagesForRunRestart(args *einoADKRunLoopArgs, baseMsgs, accumulated []adk.Message, baseCount int) ([]adk.Message, einoRunRestartContextSource) {
-	if trace := persistTraceSource(args, nil); len(trace) > 0 {
+	if trace := modelFacingTraceSnapshot(args); len(trace) > 0 {
 		// modelFacingTrace includes prior Instruction system message(s); genModelInput will prepend again.
 		return stripADKSystemMessages(trace), einoRestartContextModelTrace
 	}

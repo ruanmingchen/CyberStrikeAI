@@ -150,6 +150,7 @@ func RunEinoSingleChatModelAgent(
 		phase:          "eino_single",
 		summarization:  mainSumMw,
 		modelName:      appCfg.OpenAI.Model,
+		maxTotalTokens: appCfg.OpenAI.MaxTotalTokens,
 		conversationID: conversationID,
 		trace:          modelFacingTrace,
 	})
