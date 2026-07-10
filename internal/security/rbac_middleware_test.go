@@ -128,6 +128,31 @@ func TestMCPInvocationPermissionIsSeparateFromMCPAdministration(t *testing.T) {
 	}
 }
 
+func TestConfigToolsReadAllowsMCPReadWithoutConfigRead(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(ContextSessionKey, Session{
+			UserID:      "viewer",
+			Username:    "viewer",
+			Permissions: map[string]bool{"mcp:read": true},
+			Scope:       database.RBACScopeAssigned,
+		})
+		c.Next()
+	})
+	router.Use(RBACMiddleware(nil))
+	router.GET("/api/config/tools", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"tools": []any{}})
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/config/tools", nil)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d: %s", w.Code, http.StatusOK, w.Body.String())
+	}
+}
+
 func TestWorkflowRunPermissionIsSeparateFromDefinitionManagement(t *testing.T) {
 	if got := permissionForRequest(http.MethodPost, "/api/workflows/runs/run-1/resume"); got != "workflow:execute" {
 		t.Fatalf("resume permission = %q, want workflow:execute", got)

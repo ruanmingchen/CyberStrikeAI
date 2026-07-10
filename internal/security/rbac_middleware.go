@@ -29,31 +29,62 @@ func RBACMiddlewareWithDenyHook(db *database.DB, denyHook RBACDenyHook) gin.Hand
 			})
 			return
 		}
-		if SessionHasPermission(c, permission) {
-			// Bind the scope of the permission authorizing this request. Scope is
-			// permission-specific; using the user's broadest role scope here would
-			// let an unrelated global read role widen a write permission.
-			session, _ := CurrentSession(c)
-			session.Scope = session.ScopeFor(permission)
-			c.Set(ContextSessionKey, session)
-			c.Set(ContextUserScopeKey, session.Scope)
-			if db != nil && !resourceAllowed(c, db) {
-				if denyHook != nil {
-					denyHook(c, "resource_denied", permission)
-				}
-				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "无权访问该资源"})
-				return
+		permission, allowed := sessionHasRoutePermission(c, c.Request.Method, c.FullPath())
+		if !allowed {
+			if denyHook != nil {
+				denyHook(c, "permission_denied", permission)
 			}
-			c.Next()
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"error":      "权限不足",
+				"permission": permission,
+			})
 			return
 		}
-		if denyHook != nil {
-			denyHook(c, "permission_denied", permission)
+		// Bind the scope of the permission authorizing this request. Scope is
+		// permission-specific; using the user's broadest role scope here would
+		// let an unrelated global read role widen a write permission.
+		session, _ := CurrentSession(c)
+		session.Scope = session.ScopeFor(permission)
+		c.Set(ContextSessionKey, session)
+		c.Set(ContextUserScopeKey, session.Scope)
+		if db != nil && !resourceAllowed(c, db) {
+			if denyHook != nil {
+				denyHook(c, "resource_denied", permission)
+			}
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "无权访问该资源"})
+			return
 		}
-		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
-			"error":      "权限不足",
-			"permission": permission,
-		})
+		c.Next()
+	}
+}
+
+func sessionHasRoutePermission(c *gin.Context, method, fullPath string) (string, bool) {
+	path := strings.TrimPrefix(fullPath, "/api")
+	if alts := permissionAlternativesForRequest(method, path); len(alts) > 0 {
+		for _, permission := range alts {
+			if SessionHasPermission(c, permission) {
+				return permission, true
+			}
+		}
+		return alts[0], false
+	}
+	permission := permissionForRequest(method, fullPath)
+	if permission == "" {
+		return "", false
+	}
+	return permission, SessionHasPermission(c, permission)
+}
+
+func permissionAlternativesForRequest(method, path string) []string {
+	if method != http.MethodGet && method != http.MethodHead {
+		return nil
+	}
+	switch {
+	case strings.HasPrefix(path, "/config/tools"):
+		// MCP 管理页只需 mcp:read；系统设置页仍可用 config:read 访问同一接口。
+		return []string{"mcp:read", "config:read"}
+	default:
+		return nil
 	}
 }
 
