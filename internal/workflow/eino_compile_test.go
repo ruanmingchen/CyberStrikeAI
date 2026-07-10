@@ -2,6 +2,7 @@ package workflow
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"cyberstrike-ai/internal/config"
 	"cyberstrike-ai/internal/database"
 
+	"github.com/cloudwego/eino/compose"
 	"go.uber.org/zap"
 )
 
@@ -232,6 +234,89 @@ func TestExecuteEinoGraph_linearStartOutput(t *testing.T) {
 	}
 	if len(state.Executed) != 2 {
 		t.Fatalf("executed nodes = %d, want 2", len(state.Executed))
+	}
+}
+
+func TestExecuteEinoGraph_checkpointRestoresStartOutput(t *testing.T) {
+	ctx := context.Background()
+	checkpointStore, err := newFileCheckPointStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("new checkpoint store: %v", err)
+	}
+	state := newWorkflowLocalState(map[string]interface{}{"message": "ping"}, "run-checkpoint")
+	node := graphNode{ID: "start-1", Type: "start"}
+	wf := compose.NewWorkflow[WorkflowInput, WorkflowOutput](
+		compose.WithGenLocalState(func(context.Context) *WorkflowLocalState { return state }),
+	)
+	start := wf.AddLambdaNode("start-1", compose.InvokableLambda(func(_ context.Context, input WorkflowInput) (WorkflowNodeOutput, error) {
+		result := startOutputMap(node, input.Message, input.ConversationID, input.ProjectID)
+		state.NodeOutputs[node.ID] = result
+		state.NodeOutputs["condition-1"] = conditionOutputMap(graphNode{ID: "condition-1", Type: "condition"}, "{{inputs.message}} == ping", true)
+		state.NodeOutputs["tool-1"] = toolOutputMap(graphNode{ID: "tool-1", Type: "tool"}, "tool result", "lookup", map[string]any{"id": "1"}, "exec-1", false)
+		state.NodeOutputs["agent-1"] = agentOutputMap(graphNode{ID: "agent-1", Type: "agent"}, "agent result", "chat", []string{"exec-1"})
+		state.NodeOutputs["hitl-1"] = hitlOutputMap(graphNode{ID: "hitl-1", Type: "hitl"}, "completed", "approved", "continue?", "reviewer", true)
+		state.NodeOutputs["output-1"] = outputNodeOutputMap(graphNode{ID: "output-1", Type: "output"}, "result", "ping")
+		state.NodeOutputs["end-1"] = endOutputMap(graphNode{ID: "end-1", Type: "end"}, "done")
+		state.LastOutput = result
+		state.Outputs["seed"] = "preserved"
+		return result, nil
+	}))
+	outputNode := wf.AddLambdaNode("out-1", compose.InvokableLambda(func(_ context.Context, input WorkflowNodeOutput) (WorkflowNodeOutput, error) {
+		return input, nil
+	}))
+	start.AddInput(compose.START)
+	outputNode.AddInput("start-1")
+	wf.End().AddInput("out-1", compose.ToField("out-1"))
+	runnable, err := wf.Compile(ctx,
+		compose.WithCheckPointStore(checkpointStore),
+		compose.WithInterruptAfterNodes([]string{"start-1"}),
+	)
+	if err != nil {
+		t.Fatalf("compile: %v", err)
+	}
+
+	_, err = runnable.Invoke(ctx, workflowInputFromMap(state.Inputs), compose.WithCheckPointID("run-checkpoint"))
+	info, ok := compose.ExtractInterruptInfo(err)
+	if !ok {
+		t.Fatalf("invoke error = %v, want checkpoint interrupt", err)
+	}
+	restored, ok := info.State.(*WorkflowLocalState)
+	if !ok {
+		t.Fatalf("checkpoint state = %T, want *WorkflowLocalState", info.State)
+	}
+	for nodeID, wantType := range map[string]string{
+		"start-1":     "StartOutput",
+		"condition-1": "ConditionOutput",
+		"tool-1":      "ToolOutput",
+		"agent-1":     "AgentOutput",
+		"hitl-1":      "HITLOutput",
+		"output-1":    "OutputNodeOutput",
+		"end-1":       "NodeOutputEnvelope",
+	} {
+		if got := fmt.Sprintf("%T", restored.NodeOutputs[nodeID]["typed"]); got != "workflow."+wantType {
+			t.Fatalf("restored %s typed output = %s, want workflow.%s", nodeID, got, wantType)
+		}
+	}
+	if got := valueFromPath("previous.message", restored); got != "ping" {
+		t.Fatalf("restored previous.message = %v, want ping", got)
+	}
+	if got := valueFromPath("inputs.message", restored); got != "ping" {
+		t.Fatalf("restored inputs.message = %v, want ping", got)
+	}
+	if got := valueFromPath("outputs.seed", restored); got != "preserved" {
+		t.Fatalf("restored outputs.seed = %v, want preserved", got)
+	}
+
+	result, err := runnable.Invoke(ctx, WorkflowInput{}, compose.WithCheckPointID("run-checkpoint"))
+	if err != nil {
+		t.Fatalf("resume checkpoint: %v", err)
+	}
+	output, ok := result["out-1"].(map[string]any)
+	if !ok {
+		t.Fatalf("resumed output type = %T, want map[string]any", result["out-1"])
+	}
+	if got := output["output"]; got != "ping" {
+		t.Fatalf("resumed output = %v, want ping", got)
 	}
 }
 
