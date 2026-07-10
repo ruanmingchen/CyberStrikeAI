@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"cyberstrike-ai/internal/authctx"
 	"cyberstrike-ai/internal/database"
 
 	"github.com/gin-gonic/gin"
@@ -36,6 +37,11 @@ func AuthMiddleware(manager *AuthManager) gin.HandlerFunc {
 		c.Set(ContextUsernameKey, session.Username)
 		c.Set(ContextUserScopeKey, session.Scope)
 		c.Set(ContextSessionKey, session)
+		// Gin context values do not survive into Agent/MCP/background contexts.
+		// Attach an immutable principal to the request context as the canonical
+		// identity for every downstream execution layer.
+		principal := authctx.NewPrincipalWithScopes(session.UserID, session.Username, session.Scope, session.Permissions, session.PermissionScopes)
+		c.Request = c.Request.WithContext(authctx.WithPrincipal(c.Request.Context(), principal))
 		c.Next()
 	}
 }
@@ -79,12 +85,12 @@ func RequireResourcePermission(db *database.DB, permission, resourceType, paramN
 			return
 		}
 		if db == nil {
-			c.Next()
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"error": "资源鉴权服务不可用"})
 			return
 		}
 		resourceID := strings.TrimSpace(c.Param(paramName))
 		if resourceID == "" {
-			c.Next()
+			c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "资源 ID 不能为空"})
 			return
 		}
 		session, ok := CurrentSession(c)
@@ -129,8 +135,12 @@ func extractTokenFromRequest(c *gin.Context) string {
 		return strings.TrimSpace(authHeader)
 	}
 
-	if token := c.Query("token"); token != "" {
-		return strings.TrimSpace(token)
+	if token := c.Query("token"); token != "" && c.Request.Method == http.MethodGet {
+		acceptsSSE := strings.Contains(strings.ToLower(c.GetHeader("Accept")), "text/event-stream")
+		upgradesWebSocket := strings.EqualFold(strings.TrimSpace(c.GetHeader("Upgrade")), "websocket")
+		if acceptsSSE || upgradesWebSocket {
+			return strings.TrimSpace(token)
+		}
 	}
 
 	if cookie, err := c.Cookie("auth_token"); err == nil {

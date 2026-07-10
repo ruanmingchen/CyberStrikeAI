@@ -19,14 +19,15 @@ var (
 
 // Session represents an authenticated user session.
 type Session struct {
-	Token       string
-	ExpiresAt   time.Time
-	UserID      string
-	Username    string
-	DisplayName string
-	Roles       []string
-	Permissions map[string]bool
-	Scope       string
+	Token            string
+	ExpiresAt        time.Time
+	UserID           string
+	Username         string
+	DisplayName      string
+	Roles            []string
+	Permissions      map[string]bool
+	PermissionScopes map[string]string
+	Scope            string
 }
 
 // AuthManager manages password-based authentication and session lifecycle.
@@ -135,15 +136,23 @@ func (a *AuthManager) authenticateSession(username, password string) (Session, e
 		roleIDs = append(roleIDs, role.ID)
 	}
 	return Session{
-		Token:       token,
-		ExpiresAt:   expiresAt,
-		UserID:      user.ID,
-		Username:    user.Username,
-		DisplayName: user.DisplayName,
-		Roles:       roleIDs,
-		Permissions: access.Permissions,
-		Scope:       access.Scope,
+		Token:            token,
+		ExpiresAt:        expiresAt,
+		UserID:           user.ID,
+		Username:         user.Username,
+		DisplayName:      user.DisplayName,
+		Roles:            roleIDs,
+		Permissions:      access.Permissions,
+		PermissionScopes: access.PermissionScopes,
+		Scope:            access.Scope,
 	}, nil
+}
+
+func (s Session) ScopeFor(permission string) string {
+	if scope := strings.TrimSpace(s.PermissionScopes[strings.TrimSpace(permission)]); scope != "" {
+		return scope
+	}
+	return strings.TrimSpace(s.Scope)
 }
 
 // ValidateToken checks whether the provided token is still valid.

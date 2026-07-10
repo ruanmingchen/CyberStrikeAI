@@ -12,21 +12,43 @@ import (
 // RBACMiddleware maps protected API routes to platform permissions. It keeps
 // enforcement centralized so route declarations stay readable.
 func RBACMiddleware(db *database.DB) gin.HandlerFunc {
+	return RBACMiddlewareWithDenyHook(db, nil)
+}
+
+type RBACDenyHook func(c *gin.Context, reason, permission string)
+
+func RBACMiddlewareWithDenyHook(db *database.DB, denyHook RBACDenyHook) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		permission := permissionForRequest(c.Request.Method, c.FullPath())
 		if permission == "" {
+			if denyHook != nil {
+				denyHook(c, "unmapped_route", "")
+			}
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"error": "未配置访问权限",
 			})
 			return
 		}
 		if SessionHasPermission(c, permission) {
+			// Bind the scope of the permission authorizing this request. Scope is
+			// permission-specific; using the user's broadest role scope here would
+			// let an unrelated global read role widen a write permission.
+			session, _ := CurrentSession(c)
+			session.Scope = session.ScopeFor(permission)
+			c.Set(ContextSessionKey, session)
+			c.Set(ContextUserScopeKey, session.Scope)
 			if db != nil && !resourceAllowed(c, db) {
+				if denyHook != nil {
+					denyHook(c, "resource_denied", permission)
+				}
 				c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "无权访问该资源"})
 				return
 			}
 			c.Next()
 			return
+		}
+		if denyHook != nil {
+			denyHook(c, "permission_denied", permission)
 		}
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 			"error":      "权限不足",
@@ -59,7 +81,10 @@ func permissionForRequest(method, fullPath string) string {
 		}
 		return "agent:execute"
 	case strings.HasPrefix(path, "/hitl"):
-		return crudPermission(method, "hitl")
+		if method == http.MethodGet || method == http.MethodHead {
+			return "hitl:read"
+		}
+		return "hitl:write"
 	case strings.HasPrefix(path, "/agent-loop"), strings.HasPrefix(path, "/batch-tasks"):
 		return crudPermission(method, "tasks")
 	case strings.HasPrefix(path, "/conversations"), strings.HasPrefix(path, "/messages"), strings.HasPrefix(path, "/process-details"):
@@ -79,11 +104,19 @@ func permissionForRequest(method, fullPath string) string {
 		return "terminal:execute"
 	case strings.HasPrefix(path, "/audit"):
 		return crudPermission(method, "audit")
-	case strings.HasPrefix(path, "/external-mcp"), path == "/mcp":
-		return crudPermission(method, "mcp")
+	case path == "/mcp":
+		return "mcp:execute"
+	case strings.HasPrefix(path, "/external-mcp"):
+		if method == http.MethodGet || method == http.MethodHead {
+			return "mcp:read"
+		}
+		return "mcp:write"
 	case strings.HasPrefix(path, "/attack-chain"):
 		return crudPermission(method, "attackchain")
 	case strings.HasPrefix(path, "/knowledge"):
+		if path == "/knowledge/search" {
+			return "knowledge:read"
+		}
 		return crudPermission(method, "knowledge")
 	case strings.HasPrefix(path, "/vulnerabilities"):
 		return crudPermission(method, "vulnerability")
@@ -98,6 +131,9 @@ func permissionForRequest(method, fullPath string) string {
 	case strings.HasPrefix(path, "/roles"):
 		return crudPermission(method, "roles")
 	case strings.HasPrefix(path, "/workflows"):
+		if path == "/workflows/validate" || path == "/workflows/dry-run" || strings.HasSuffix(path, "/resume") {
+			return "workflow:execute"
+		}
 		return crudPermission(method, "workflow")
 	case strings.HasPrefix(path, "/skills"):
 		return crudPermission(method, "skills")
@@ -128,6 +164,20 @@ func resourceAllowed(c *gin.Context, db *database.DB) bool {
 	}
 	path := strings.TrimPrefix(c.FullPath(), "/api")
 	switch {
+	case path == "/monitor/stats", path == "/monitor/calls-timeline":
+		// These APIs currently operate on process-global state. Until every MCP
+		// invocation and persisted execution record carries an immutable owner,
+		// allowing an assigned/own-scoped session would be a cross-user bypass.
+		return session.Scope == database.RBACScopeAll
+	case strings.HasPrefix(path, "/c2/profiles") && c.Request.Method != http.MethodGet:
+		return session.Scope == database.RBACScopeAll
+	case (strings.HasPrefix(path, "/hitl/tool-whitelist") || strings.HasPrefix(path, "/hitl/default-reviewer") || strings.HasPrefix(path, "/hitl/audit-strategy")) && c.Request.Method != http.MethodGet:
+		return session.Scope == database.RBACScopeAll
+	case isMutationMethod(c.Request.Method) && isProcessGlobalMutationPath(path):
+		// These definitions/configurations are shared by every user and do not
+		// carry owners. A module write permission with assigned/own scope must
+		// not silently become a process-global administrative capability.
+		return session.Scope == database.RBACScopeAll
 	case strings.HasPrefix(path, "/projects/:id"):
 		return db.UserCanAccessResource(session.UserID, session.Scope, "project", c.Param("id"))
 	case strings.HasPrefix(path, "/conversations/:id"):
@@ -153,4 +203,31 @@ func resourceAllowed(c *gin.Context, db *database.DB) bool {
 	default:
 		return true
 	}
+}
+
+func isMutationMethod(method string) bool {
+	switch method {
+	case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		return true
+	default:
+		return false
+	}
+}
+
+func isProcessGlobalMutationPath(path string) bool {
+	if strings.HasPrefix(path, "/roles") || strings.HasPrefix(path, "/skills") ||
+		strings.HasPrefix(path, "/external-mcp") || strings.HasPrefix(path, "/robot") {
+		return true
+	}
+	if strings.HasPrefix(path, "/workflows") {
+		// Workflow runs inherit conversation access; definitions are global.
+		return !strings.HasPrefix(path, "/workflows/runs/") && path != "/workflows/validate" && path != "/workflows/dry-run"
+	}
+	if strings.HasPrefix(path, "/knowledge") {
+		return path != "/knowledge/search"
+	}
+	if strings.HasPrefix(path, "/eino-agent/markdown-agents") || strings.HasPrefix(path, "/multi-agent/markdown-agents") {
+		return true
+	}
+	return false
 }
