@@ -145,6 +145,19 @@ func dryRunNode(node graphNode, state *WorkflowLocalState) (map[string]any, bool
 	case "agent":
 		mode := firstNonEmpty(cfgString(node.Config, "agent_mode"), "eino_single")
 		response := "[dry-run] agent execution skipped"
+		contract, err := parseStructuredOutputContract(node.Config)
+		if err != nil {
+			errText := fmt.Sprintf("Agent 节点结构化输出配置非法：%v", err)
+			return outputMap(envelope("agent", node.ID, node.Type, "failed", ""), map[string]any{"error": errText}), false, "failed", errText
+		}
+		if contract.Mode == structuredOutputModeJSONSchema {
+			value := structuredDryRunValue(contract.Schema)
+			if key := cfgString(node.Config, "output_key"); key != "" {
+				state.Outputs[key] = value
+			}
+			diagnostic := StructuredOutputDiagnostic{Status: structuredStatusValid, ParsePath: "dry_run", Schema: contract.Schema}
+			return structuredAgentOutputMap(node, response, value, mode, nil, diagnostic, 0), true, "simulated", ""
+		}
 		if key := cfgString(node.Config, "output_key"); key != "" {
 			state.Outputs[key] = response
 		}

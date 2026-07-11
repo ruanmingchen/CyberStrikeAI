@@ -45,6 +45,9 @@ func collectAgentMetrics(state *WorkflowLocalState, data interface{}) {
 	for _, key := range []string{"prompt_tokens", "completion_tokens", "total_tokens", "cost", "input_tokens", "output_tokens"} {
 		if v, ok := m[key]; ok {
 			accumulateWorkflowMetric(state, key, v)
+			if key == "cost" {
+				accumulateWorkflowMetric(state, "model_cost", v)
+			}
 		}
 	}
 	if usage, ok := m["usage"].(map[string]interface{}); ok {

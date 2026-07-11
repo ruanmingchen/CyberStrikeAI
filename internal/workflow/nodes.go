@@ -3,12 +3,15 @@ package workflow
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"cyberstrike-ai/internal/agent"
 	"cyberstrike-ai/internal/config"
 	"cyberstrike-ai/internal/multiagent"
+	internalopenai "cyberstrike-ai/internal/openai"
 )
 
 func runBuiltinNode(ctx context.Context, args RunArgs, node graphNode, state *WorkflowLocalState) (map[string]any, bool, string, string) {
@@ -195,35 +198,148 @@ func runAgentNode(ctx context.Context, args RunArgs, node graphNode, state *Work
 		response = result.Response
 		mcpIDs = result.MCPExecutionIDs
 	}
+	response, retryCount := repairStructuredAgentResponse(ctx, args, node, state, response)
+	out, proceed, status, errText := applyStructuredAgentResultWithRetry(node, state, response, mode, mcpIDs, retryCount)
+	recordStructuredAgentMetrics(state, out)
 	if args.Progress != nil {
 		args.Progress("workflow_agent_output", response, map[string]any{
-			"nodeId":          node.ID,
-			"label":           firstNonEmpty(node.Label, node.ID),
-			"mode":            mode,
-			"inputSource":     inputSource,
-			"inputPreview":    truncateWorkflowPreview(inputSource, 500),
-			"mcpExecutionIds": mcpIDs,
+			"nodeId":           node.ID,
+			"label":            firstNonEmpty(node.Label, node.ID),
+			"mode":             mode,
+			"inputSource":      inputSource,
+			"inputPreview":     truncateWorkflowPreview(inputSource, 500),
+			"mcpExecutionIds":  mcpIDs,
+			"structuredStatus": out["structured_status"],
+			"structuredError":  out["structured_error"],
 		})
 	}
-	if key := cfgString(node.Config, "output_key"); key != "" {
-		state.Outputs[key] = response
-	}
-	return agentOutputMap(node, response, mode, mcpIDs), true, "completed", ""
+	return out, proceed, status, errText
 }
 
 func buildAgentNodeMessage(node graphNode, state *WorkflowLocalState, upstreamInput string) string {
 	instruction := strings.TrimSpace(cfgString(node.Config, "instruction"))
 	upstreamInput = strings.TrimSpace(upstreamInput)
+	var message string
 	if instruction == "" {
 		if upstreamInput != "" {
-			return fmt.Sprintf("请基于上游节点输出继续处理：\n%s", upstreamInput)
+			message = fmt.Sprintf("请基于上游节点输出继续处理：\n%s", upstreamInput)
+		} else {
+			message = fmt.Sprintf("请基于上游节点输出继续处理：\n%v", state.LastOutput["output"])
 		}
-		return fmt.Sprintf("请基于上游节点输出继续处理：\n%v", state.LastOutput["output"])
+	} else if upstreamInput == "" {
+		message = instruction
+	} else {
+		message = strings.TrimSpace(fmt.Sprintf("上游输入：\n%s\n\n节点指令：\n%s", upstreamInput, instruction))
 	}
-	if upstreamInput == "" {
-		return instruction
+	contract, err := parseStructuredOutputContract(node.Config)
+	if err != nil || contract.Mode != structuredOutputModeJSONSchema {
+		return message
 	}
-	return strings.TrimSpace(fmt.Sprintf("上游输入：\n%s\n\n节点指令：\n%s", upstreamInput, instruction))
+	return message + "\n\n" + structuredOutputInstruction(contract.Schema)
+}
+
+func applyStructuredAgentResult(node graphNode, state *WorkflowLocalState, response, mode string, mcpIDs []string) (map[string]any, bool, string, string) {
+	return applyStructuredAgentResultWithRetry(node, state, response, mode, mcpIDs, 0)
+}
+
+func applyStructuredAgentResultWithRetry(node graphNode, state *WorkflowLocalState, response, mode string, mcpIDs []string, retryCount int) (map[string]any, bool, string, string) {
+	contract, err := parseStructuredOutputContract(node.Config)
+	if err != nil {
+		errText := fmt.Sprintf("Agent 节点结构化输出配置非法：%v", err)
+		return outputMap(envelope("agent", node.ID, node.Type, "failed", ""), map[string]any{"mode": mode, "error": errText}), false, "failed", errText
+	}
+	if contract.Mode == structuredOutputModeText {
+		if key := cfgString(node.Config, "output_key"); key != "" {
+			state.Outputs[key] = response
+		}
+		return agentOutputMap(node, response, mode, mcpIDs), true, "completed", ""
+	}
+	value, diagnostic, err := ProcessStructuredResponse(response, contract.Schema)
+	if err == nil {
+		if key := cfgString(node.Config, "output_key"); key != "" {
+			state.Outputs[key] = value
+		}
+		return structuredAgentOutputMap(node, response, value, mode, mcpIDs, diagnostic, retryCount), true, "completed", ""
+	}
+	if contract.Config.FailurePolicy == "text_fallback" {
+		diagnostic.Status = structuredStatusFallbackText
+		if key := cfgString(node.Config, "output_key"); key != "" {
+			state.Outputs[key] = response
+		}
+		return structuredAgentOutputMap(node, response, response, mode, mcpIDs, diagnostic, retryCount), true, "completed", ""
+	}
+	if contract.Config.FailurePolicy == "fail" {
+		return structuredAgentOutputMap(node, response, "", mode, mcpIDs, diagnostic, retryCount), false, "failed", diagnostic.Error
+	}
+	return structuredAgentOutputMap(node, response, "", mode, mcpIDs, diagnostic, retryCount), true, "completed", ""
+}
+
+func repairStructuredAgentResponse(ctx context.Context, args RunArgs, node graphNode, state *WorkflowLocalState, response string) (string, int) {
+	contract, err := parseStructuredOutputContract(node.Config)
+	if err != nil || contract.Mode != structuredOutputModeJSONSchema || contract.Config.RepairAttempts != 1 {
+		return response, 0
+	}
+	_, diagnostic, err := ProcessStructuredResponse(response, contract.Schema)
+	if err == nil || args.AppCfg == nil {
+		return response, 0
+	}
+	payload := buildStructuredRepairRequest(response, contract.Schema, []string{firstNonEmpty(diagnostic.Error, err.Error())})
+	payload["model"] = args.AppCfg.OpenAI.Model
+	accumulateWorkflowMetric(state, "structured_repair_attempt_count", 1)
+	client := internalopenai.NewClient(&args.AppCfg.OpenAI, &http.Client{Timeout: agentRequestTimeout(args.AppCfg)}, args.Logger)
+	var apiResponse struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage map[string]any `json:"usage"`
+	}
+	if err := client.ChatCompletion(ctx, payload, &apiResponse); err != nil || len(apiResponse.Choices) == 0 {
+		return response, 0
+	}
+	repaired := strings.TrimSpace(apiResponse.Choices[0].Message.Content)
+	if _, _, err := ProcessStructuredResponse(repaired, contract.Schema); err != nil {
+		return response, 0
+	}
+	accumulateWorkflowMetric(state, "structured_retry_count", 1)
+	for _, key := range []string{"prompt_tokens", "completion_tokens", "total_tokens"} {
+		if value, ok := apiResponse.Usage[key]; ok {
+			accumulateWorkflowMetric(state, "repair_"+key, value)
+		}
+	}
+	return repaired, 1
+}
+
+func recordStructuredAgentMetrics(state *WorkflowLocalState, output map[string]any) {
+	if state == nil || output == nil {
+		return
+	}
+	structuredStatus, ok := output["structured_status"].(string)
+	if !ok || structuredStatus == "" {
+		return
+	}
+	accumulateWorkflowMetric(state, "structured_node_count", 1)
+	accumulateWorkflowMetric(state, "structured_ab_group_b_node_count", 1)
+	if retryCount, ok := output["structured_retry_count"].(int); ok && retryCount > 0 {
+		accumulateWorkflowMetric(state, "structured_retry_success_count", 1)
+	}
+	switch structuredStatus {
+	case structuredStatusValid:
+		if retryCount, _ := output["structured_retry_count"].(int); retryCount == 0 {
+			accumulateWorkflowMetric(state, "structured_first_schema_valid_count", 1)
+		}
+	case structuredStatusError:
+		accumulateWorkflowMetric(state, "structured_final_failure_count", 1)
+	}
+	if state.Metrics == nil {
+		state.Metrics = make(map[string]any)
+	}
+	state.Metrics["structured_error_silent_count"] = float64(0)
+}
+
+func agentRequestTimeout(appCfg *config.Config) time.Duration {
+	return 2 * time.Minute
 }
 
 func workflowAgentProgress(progress agent.ProgressCallback, state *WorkflowLocalState, node graphNode) agent.ProgressCallback {

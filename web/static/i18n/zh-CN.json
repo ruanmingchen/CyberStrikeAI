@@ -3174,7 +3174,23 @@
       "staticValue": "固定输出值",
       "resultBinding": "结束摘要绑定",
       "resultBindingHint": "结束节点展示的摘要字段",
-      "endTemplate": "结束摘要模板"
+      "endTemplate": "结束摘要模板",
+      "outputMode": "输出模式",
+      "outputModeText": "自然语言（text）",
+      "outputModeJSONSchema": "结构化 JSON（json_schema）",
+      "structuredFields": "输出字段契约",
+      "structuredFieldsHint": "字段说明会传给模型；仅支持标量及其同质数组。",
+      "addStructuredField": "新增字段",
+      "structuredFieldName": "字段名",
+      "structuredRequired": "必填",
+      "structuredDescription": "字段说明",
+      "structuredEnumValues": "枚举值（逗号分隔）",
+      "structuredMaxLength": "最大长度",
+      "structuredRepairAttempts": "格式修复次数",
+      "structuredFailurePolicy": "结构化失败策略",
+      "structuredFailure_route": "路由至结构化失败分支",
+      "structuredFailure_fail": "终止节点",
+      "structuredFailure_text_fallback": "降级为文本（仅人工阅读）"
     },
     "defaultHitlPrompt": "请审批该步骤是否继续执行",
     "nodeFallback": "节点 {{n}}",
@@ -3213,7 +3229,8 @@
       "nodeUnreachable": "节点 {{label}} 无法从开始节点到达",
       "graphCycle": "工作流存在环路，请保持 DAG",
       "serverFailed": "后端图校验失败",
-      "outputNeedsKey": "输出节点 {{label}} 需要输出变量名"
+      "outputNeedsKey": "输出节点 {{label}} 需要输出变量名",
+      "structuredSchema": "Agent 节点 {{label}} 的结构化输出契约无效：{{reason}}"
     }
   },
   "c2": {

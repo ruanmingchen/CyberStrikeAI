@@ -3186,7 +3186,23 @@
       "staticValue": "Static output value",
       "resultBinding": "End summary binding",
       "resultBindingHint": "Field shown in the end node summary",
-      "endTemplate": "End summary template"
+      "endTemplate": "End summary template",
+      "outputMode": "Output mode",
+      "outputModeText": "Natural language (text)",
+      "outputModeJSONSchema": "Structured JSON (json_schema)",
+      "structuredFields": "Output field contract",
+      "structuredFieldsHint": "Field descriptions are sent to the model; only scalars and homogeneous scalar arrays are supported.",
+      "addStructuredField": "Add field",
+      "structuredFieldName": "Field name",
+      "structuredRequired": "Required",
+      "structuredDescription": "Field description",
+      "structuredEnumValues": "Enum values (comma separated)",
+      "structuredMaxLength": "Maximum length",
+      "structuredRepairAttempts": "Format repair attempts",
+      "structuredFailurePolicy": "Structured failure policy",
+      "structuredFailure_route": "Route to structured failure branch",
+      "structuredFailure_fail": "Fail the node",
+      "structuredFailure_text_fallback": "Fallback to text (human reading only)"
     },
     "defaultHitlPrompt": "Please approve whether this step should continue",
     "nodeFallback": "Node {{n}}",
@@ -3225,7 +3241,8 @@
       "nodeUnreachable": "Node {{label}} cannot be reached from Start",
       "graphCycle": "Workflow contains a cycle; keep it as a DAG",
       "serverFailed": "Server graph validation failed",
-      "outputNeedsKey": "Output node {{label}} requires an output variable name"
+      "outputNeedsKey": "Output node {{label}} requires an output variable name",
+      "structuredSchema": "Agent node {{label}} has an invalid structured output contract: {{reason}}"
     }
   },
   "c2": {

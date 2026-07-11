@@ -131,6 +131,8 @@ func validateNodeTopology(idx *graphIndex) error {
 }
 
 func validateNodeConfigs(idx *graphIndex) error {
+	structuredOutputOwners := make(map[string]string)
+	structuredOutputFields := make(map[string]map[string]bool)
 	for id, node := range idx.nodes {
 		label := firstNonEmpty(node.Label, id)
 		switch strings.ToLower(strings.TrimSpace(node.Type)) {
@@ -149,6 +151,22 @@ func validateNodeConfigs(idx *graphIndex) error {
 			}
 			if cfgString(node.Config, "output_key") == "" {
 				return fmt.Errorf("Agent 节点「%s」必须填写输出变量名", label)
+			}
+			contract, err := parseStructuredOutputContract(node.Config)
+			if err != nil {
+				return fmt.Errorf("Agent 节点「%s」的结构化输出配置非法: %w", label, err)
+			}
+			if contract.Mode == structuredOutputModeJSONSchema {
+				key := cfgString(node.Config, "output_key")
+				if owner, exists := structuredOutputOwners[key]; exists {
+					return fmt.Errorf("Agent 节点「%s」与「%s」不能共享结构化输出变量名 %q", label, owner, key)
+				}
+				structuredOutputOwners[key] = label
+				fields := make(map[string]bool, len(contract.Schema.Fields))
+				for _, field := range contract.Schema.Fields {
+					fields[field.Name] = true
+				}
+				structuredOutputFields[key] = fields
 			}
 		case "condition":
 			if cfgString(node.Config, "expression") == "" {
@@ -173,6 +191,63 @@ func validateNodeConfigs(idx *graphIndex) error {
 		}
 		if hasConditionalOutgoingEdges(idx, id) {
 			if err := validateConditionalOutgoingEdges(idx, id, node); err != nil {
+				return err
+			}
+		}
+	}
+	return validateStructuredOutputReferences(idx, structuredOutputFields)
+}
+
+func validateStructuredOutputReferences(idx *graphIndex, structuredOutputFields map[string]map[string]bool) error {
+	if len(structuredOutputFields) == 0 {
+		return nil
+	}
+	validateBinding := func(label string, binding FieldBinding) error {
+		if binding.From != "outputs" && binding.From != "output" {
+			return nil
+		}
+		parts := strings.Split(strings.TrimSpace(binding.Field), ".")
+		if len(parts) < 2 {
+			return nil
+		}
+		fields, structured := structuredOutputFields[parts[0]]
+		if !structured || fields[parts[1]] {
+			return nil
+		}
+		return fmt.Errorf("节点「%s」引用了结构化输出 %s 中不存在的字段 %s", label, parts[0], parts[1])
+	}
+	validateExpression := func(label, expression string) error {
+		for _, match := range templateVarRe.FindAllStringSubmatch(expression, -1) {
+			if len(match) != 2 {
+				continue
+			}
+			if err := validateBinding(label, FieldBinding{From: "outputs", Field: strings.TrimPrefix(match[1], "outputs.")}); err != nil && strings.HasPrefix(match[1], "outputs.") {
+				return err
+			}
+		}
+		return nil
+	}
+	for id, node := range idx.nodes {
+		label := firstNonEmpty(node.Label, id)
+		for _, key := range []string{"input_binding", "source_binding", "prompt_binding", "result_binding"} {
+			if binding, ok := parseFieldBinding(node.Config, key); ok {
+				if err := validateBinding(label, binding); err != nil {
+					return err
+				}
+			}
+		}
+		for _, binding := range toolArgumentBindings(node.Config) {
+			if err := validateBinding(label, binding); err != nil {
+				return err
+			}
+		}
+		if err := validateExpression(label, firstNonEmpty(cfgString(node.Config, "expression"), cfgString(node.Config, "condition"))); err != nil {
+			return err
+		}
+	}
+	for _, outgoing := range idx.outgoing {
+		for _, edge := range outgoing {
+			if err := validateExpression(edge.ID, firstNonEmpty(cfgString(edge.Config, "expression"), cfgString(edge.Config, "condition"))); err != nil {
 				return err
 			}
 		}

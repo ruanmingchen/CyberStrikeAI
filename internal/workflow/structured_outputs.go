@@ -31,8 +31,14 @@ type ToolOutput struct {
 
 type AgentOutput struct {
 	NodeOutputEnvelope
-	Mode            string   `json:"mode"`
-	MCPExecutionIDs []string `json:"mcp_execution_ids"`
+	Mode                 string   `json:"mode"`
+	MCPExecutionIDs      []string `json:"mcp_execution_ids"`
+	StructuredStatus     string   `json:"structured_status,omitempty"`
+	StructuredValue      any      `json:"structured_value,omitempty"`
+	StructuredError      string   `json:"structured_error,omitempty"`
+	RawOutput            string   `json:"raw_output,omitempty"`
+	OutputSchema         any      `json:"output_schema,omitempty"`
+	StructuredRetryCount int      `json:"structured_retry_count,omitempty"`
 }
 
 type HITLOutput struct {
@@ -130,6 +136,31 @@ func agentOutputMap(node graphNode, response, mode string, mcpIDs []string) map[
 		MCPExecutionIDs:    mcpIDs,
 	}
 	return outputMap(typed.NodeOutputEnvelope, map[string]any{"mode": mode, "mcp_execution_ids": mcpIDs, "typed": typed})
+}
+
+func structuredAgentOutputMap(node graphNode, response string, value any, mode string, mcpIDs []string, diagnostic StructuredOutputDiagnostic, retryCount int) map[string]any {
+	typed := AgentOutput{
+		NodeOutputEnvelope:   envelope("agent", node.ID, node.Type, "completed", value),
+		Mode:                 mode,
+		MCPExecutionIDs:      mcpIDs,
+		StructuredStatus:     diagnostic.Status,
+		StructuredValue:      value,
+		StructuredError:      diagnostic.Error,
+		RawOutput:            truncateWorkflowPreview(response, 8000),
+		OutputSchema:         diagnostic.Schema,
+		StructuredRetryCount: retryCount,
+	}
+	return outputMap(typed.NodeOutputEnvelope, map[string]any{
+		"mode":                   mode,
+		"mcp_execution_ids":      mcpIDs,
+		"structured_status":      diagnostic.Status,
+		"structured_value":       value,
+		"structured_error":       diagnostic.Error,
+		"raw_output":             typed.RawOutput,
+		"output_schema":          diagnostic.Schema,
+		"structured_retry_count": retryCount,
+		"typed":                  typed,
+	})
 }
 
 func hitlOutputMap(node graphNode, status string, output string, prompt string, reviewer string, approved bool) map[string]any {

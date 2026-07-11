@@ -115,7 +115,7 @@
             case 'tool':
                 return { tool_name: '', arguments: '{}', timeout_seconds: '', join_strategy: 'all_merge' };
             case 'agent':
-                return { agent_mode: 'eino_single', input_binding: { from: 'previous', field: 'output' }, instruction: '', output_key: 'agent_result', join_strategy: 'all_merge' };
+                return { agent_mode: 'eino_single', input_binding: { from: 'previous', field: 'output' }, instruction: '', output_key: 'agent_result', output_mode: 'text', join_strategy: 'all_merge' };
             case 'condition':
                 return { expression: '{{previous.output}} != ""', join_strategy: 'all_merge' };
             case 'hitl':
@@ -980,6 +980,56 @@
         `;
     }
 
+    function structuredOutputSchemaFromConfig(cfg) {
+        const schema = cfg && cfg.output_schema && typeof cfg.output_schema === 'object' ? cfg.output_schema : {};
+        return {
+            contract_version: Number(schema.contract_version) || 1,
+            type: 'object',
+            fields: Array.isArray(schema.fields) ? schema.fields : []
+        };
+    }
+
+    function structuredOutputFieldHtml(field, index) {
+        const itemType = field && field.items ? field.items.type : 'string';
+        const type = field && field.type ? field.type : 'string';
+        const enumValues = Array.isArray(field && field.enum) ? field.enum.join(', ') : '';
+        return `
+            <div class="workflow-structured-field" data-index="${index}">
+                <input class="form-input" data-structured-name value="${esc(field.name || '')}" placeholder="${esc(_t('workflows.config.structuredFieldName'))}" oninput="updateWorkflowTypedConfig()">
+                <select class="workflow-form-select-native" data-structured-type onchange="updateWorkflowTypedConfig(); renderTypedConfig(selectedElement)">
+                    ${['string', 'number', 'integer', 'boolean', 'enum', 'array'].map(value => `<option value="${value}" ${value === type ? 'selected' : ''}>${value}</option>`).join('')}
+                </select>
+                <label class="workflow-checkbox"><input type="checkbox" data-structured-required ${field.required ? 'checked' : ''} onchange="updateWorkflowTypedConfig()"> ${esc(_t('workflows.config.structuredRequired'))}</label>
+                <input class="form-input" data-structured-description value="${esc(field.description || '')}" placeholder="${esc(_t('workflows.config.structuredDescription'))}" oninput="updateWorkflowTypedConfig()">
+                ${type === 'enum' ? `<input class="form-input" data-structured-enum value="${esc(enumValues)}" placeholder="${esc(_t('workflows.config.structuredEnumValues'))}" oninput="updateWorkflowTypedConfig()">` : ''}
+                ${type === 'array' ? `<select class="workflow-form-select-native" data-structured-items onchange="updateWorkflowTypedConfig()">${['string', 'number', 'integer', 'boolean'].map(value => `<option value="${value}" ${value === itemType ? 'selected' : ''}>${value}</option>`).join('')}</select>` : ''}
+                ${type === 'string' ? `<input type="number" min="1" class="form-input" data-structured-max-length value="${esc(field.max_length || '')}" placeholder="${esc(_t('workflows.config.structuredMaxLength'))}" oninput="updateWorkflowTypedConfig()">` : ''}
+                <button type="button" class="btn-secondary btn-small" onclick="moveWorkflowStructuredField(${index}, -1)">↑</button>
+                <button type="button" class="btn-secondary btn-small" onclick="moveWorkflowStructuredField(${index}, 1)">↓</button>
+                <button type="button" class="btn-secondary btn-small" onclick="removeWorkflowStructuredField(${index})">×</button>
+            </div>`;
+    }
+
+    function structuredOutputConfigHtml(cfg) {
+        const schema = structuredOutputSchemaFromConfig(cfg);
+        const options = cfg.structured_output && typeof cfg.structured_output === 'object' ? cfg.structured_output : {};
+        return `
+            <div class="form-group">
+                <label>${esc(_t('workflows.config.structuredFields'))}</label>
+                <p class="workflow-config-hint">${esc(_t('workflows.config.structuredFieldsHint'))}</p>
+                <div id="workflow-structured-fields">${schema.fields.map(structuredOutputFieldHtml).join('')}</div>
+                <button type="button" class="btn-secondary btn-small" onclick="addWorkflowStructuredField()">${esc(_t('workflows.config.addStructuredField'))}</button>
+            </div>
+            <div class="form-group">
+                <label for="workflow-structured-repair">${esc(_t('workflows.config.structuredRepairAttempts'))}</label>
+                <select id="workflow-structured-repair" class="workflow-form-select-native" onchange="updateWorkflowTypedConfig()"><option value="0" ${Number(options.repair_attempts) === 0 ? 'selected' : ''}>0</option><option value="1" ${Number(options.repair_attempts) !== 0 ? 'selected' : ''}>1</option></select>
+            </div>
+            <div class="form-group">
+                <label for="workflow-structured-failure">${esc(_t('workflows.config.structuredFailurePolicy'))}</label>
+                <select id="workflow-structured-failure" class="workflow-form-select-native" onchange="updateWorkflowTypedConfig()">${['route', 'fail', 'text_fallback'].map(value => `<option value="${value}" ${value === (options.failure_policy || 'route') ? 'selected' : ''}>${esc(_t('workflows.config.structuredFailure_' + value))}</option>`).join('')}</select>
+            </div>`;
+    }
+
     function renderTypedConfig(ele) {
         const wrap = document.getElementById('workflow-typed-config');
         if (!wrap || !ele) return;
@@ -1043,6 +1093,8 @@
                     ${bindingFieldHtml('workflow-agent-input', 'workflows.config.inputBinding', bindingFromConfig(cfg, 'input_binding', 'previous', 'output'), 'workflows.config.inputBindingHint')}
                     ${typedTextarea('workflow-agent-instruction', _t('workflows.config.nodeInstruction'), cfg.instruction, _t('workflows.config.instructionPlaceholder'))}
                     ${typedField('workflow-agent-output-key', _t('workflows.config.outputKey'), cfg.output_key, 'agent_result')}
+                    <div class="form-group"><label for="workflow-agent-output-mode">${esc(_t('workflows.config.outputMode'))}</label><select id="workflow-agent-output-mode" class="workflow-form-select-native" onchange="updateWorkflowAgentOutputMode()"><option value="text" ${(cfg.output_mode || 'text') === 'text' ? 'selected' : ''}>${esc(_t('workflows.config.outputModeText'))}</option><option value="json_schema" ${cfg.output_mode === 'json_schema' ? 'selected' : ''}>${esc(_t('workflows.config.outputModeJSONSchema'))}</option></select></div>
+                    ${(cfg.output_mode || 'text') === 'json_schema' ? structuredOutputConfigHtml(cfg) : ''}
                 `;
                 break;
             case 'condition':
@@ -1112,6 +1164,41 @@
         return out;
     }
 
+    function readStructuredOutputSchema() {
+        const fields = [];
+        document.querySelectorAll('#workflow-structured-fields .workflow-structured-field').forEach(row => {
+            const type = (row.querySelector('[data-structured-type]') || {}).value || 'string';
+            const field = {
+                name: ((row.querySelector('[data-structured-name]') || {}).value || '').trim(),
+                type,
+                required: Boolean((row.querySelector('[data-structured-required]') || {}).checked),
+                description: ((row.querySelector('[data-structured-description]') || {}).value || '').trim()
+            };
+            if (type === 'enum') {
+                field.enum = ((row.querySelector('[data-structured-enum]') || {}).value || '').split(',').map(value => value.trim()).filter(Boolean);
+            }
+            if (type === 'array') field.items = { type: (row.querySelector('[data-structured-items]') || {}).value || 'string' };
+            if (type === 'string') {
+                const maxLength = Number((row.querySelector('[data-structured-max-length]') || {}).value || 0);
+                if (maxLength > 0) field.max_length = maxLength;
+            }
+            fields.push(field);
+        });
+        return { contract_version: 1, type: 'object', fields };
+    }
+
+    function updateStructuredFields(mutator) {
+        if (!selectedElement) return;
+        mergeVisibleConfig();
+        const cfg = Object.assign({}, selectedElement.data('config') || {});
+        const schema = structuredOutputSchemaFromConfig(cfg);
+        mutator(schema.fields);
+        cfg.output_mode = 'json_schema';
+        cfg.output_schema = schema;
+        selectedElement.data('config', cfg);
+        renderTypedConfig(selectedElement);
+    }
+
     function readTypedConfig(ele) {
         if (!ele) return {};
         if (!ele.isNode()) {
@@ -1133,13 +1220,23 @@
                     join_strategy
                 };
             case 'agent':
-                return {
+                const outputMode = (document.getElementById('workflow-agent-output-mode') || {}).value || 'text';
+                const config = {
                     agent_mode: (document.getElementById('workflow-agent-mode') || {}).value || 'eino_single',
                     input_binding: readBinding('workflow-agent-input'),
                     instruction: (document.getElementById('workflow-agent-instruction') || {}).value || '',
                     output_key: (document.getElementById('workflow-agent-output-key') || {}).value || 'agent_result',
+                    output_mode: outputMode,
                     join_strategy
                 };
+                if (outputMode === 'json_schema') {
+                    config.output_schema = readStructuredOutputSchema();
+                    config.structured_output = {
+                        repair_attempts: Number((document.getElementById('workflow-structured-repair') || {}).value || 1),
+                        failure_policy: (document.getElementById('workflow-structured-failure') || {}).value || 'route'
+                    };
+                }
+                return config;
             case 'condition':
                 return { expression: (document.getElementById('workflow-condition-expression') || {}).value || '', join_strategy };
             case 'hitl':
@@ -1510,6 +1607,29 @@
                 errors.push(_t('workflows.validation.toolNeedsMcp', { label: node.label || node.id }));
             }
         });
+        nodes.filter(node => node.type === 'agent' && ((node.config || {}).output_mode || 'text') === 'json_schema').forEach(node => {
+            const cfg = node.config || {};
+            const schema = structuredOutputSchemaFromConfig(cfg);
+            const fields = schema.fields;
+            const names = new Set();
+            let reason = '';
+            if (!String(cfg.output_key || '').trim()) reason = _t('workflows.config.outputKey');
+            else if (schema.contract_version !== 1 || schema.type !== 'object' || !fields.length) reason = 'contract_version/type/fields';
+            fields.forEach(field => {
+                const name = String(field.name || '').trim();
+                const type = String(field.type || '').trim();
+                if (!reason && (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || names.has(name))) reason = name || 'field name';
+                names.add(name);
+                if (!reason && !String(field.description || '').trim()) reason = name + ' description';
+                if (!reason && type === 'enum' && (!Array.isArray(field.enum) || !field.enum.length || field.enum.some(value => !String(value).trim()))) reason = name + ' enum';
+                if (!reason && type === 'array' && !['string', 'number', 'integer', 'boolean'].includes(String((field.items || {}).type || ''))) reason = name + ' items';
+                if (!reason && !['string', 'number', 'integer', 'boolean', 'enum', 'array'].includes(type)) reason = name + ' type';
+            });
+            const options = cfg.structured_output || {};
+            if (!reason && ![0, 1].includes(Number(options.repair_attempts == null ? 1 : options.repair_attempts))) reason = 'repair_attempts';
+            if (!reason && !['route', 'fail', 'text_fallback'].includes(String(options.failure_policy || 'route'))) reason = 'failure_policy';
+            if (reason) errors.push(_t('workflows.validation.structuredSchema', { label: node.label || node.id, reason }));
+        });
         nodes.filter(node => node.type === 'condition').forEach(node => {
             if (!String((node.config || {}).expression || '').trim()) {
                 errors.push(_t('workflows.validation.conditionNeedsExpr', { label: node.label || node.id }));
@@ -1823,6 +1943,28 @@
     window.updateWorkflowTypedConfig = function () {
         if (!selectedElement) return;
         mergeVisibleConfig();
+    };
+
+    window.updateWorkflowAgentOutputMode = function () {
+        if (!selectedElement) return;
+        mergeVisibleConfig();
+        renderTypedConfig(selectedElement);
+    };
+
+    window.addWorkflowStructuredField = function () {
+        updateStructuredFields(fields => fields.push({ name: '', type: 'string', required: false, description: '' }));
+    };
+
+    window.removeWorkflowStructuredField = function (index) {
+        updateStructuredFields(fields => fields.splice(index, 1));
+    };
+
+    window.moveWorkflowStructuredField = function (index, delta) {
+        updateStructuredFields(fields => {
+            const target = index + delta;
+            if (target < 0 || target >= fields.length) return;
+            [fields[index], fields[target]] = [fields[target], fields[index]];
+        });
     };
 
     window.useWorkflowConditionExample = function (expr) {
