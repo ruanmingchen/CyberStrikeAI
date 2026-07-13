@@ -1879,8 +1879,8 @@
         return window.WorkflowPackageClient || null;
     }
 
-    function workflowPackageText(key, fallback) {
-        const translated = _t(key);
+    function workflowPackageText(key, fallback, opts) {
+        const translated = _t(key, opts);
         return translated === key ? fallback : translated;
     }
 
@@ -1921,37 +1921,39 @@
 
     function workflowPackageErrorMessage(error) {
         const code = error && error.code ? error.code : '';
-        const messages = {
-            WFPKG_FILE_REQUIRED: '请选择本地图编排包后再预检。',
-            WFPKG_FILE_TOO_LARGE: '文件超过 10 MiB 限制，请选择更小的本地包。',
-            WFPKG_INVALID_ARCHIVE: '本地包不是有效的 Zip 文件，无法完成预检。',
-            WFPKG_UNSUPPORTED_FORMAT: '本地包格式或版本不受支持。',
-            WFPKG_INVALID_MANIFEST: '本地包清单无效，无法完成预检。',
-            WFPKG_CHECKSUM_MISMATCH: '本地包校验失败，文件可能已损坏或被修改。',
-            WFPKG_MULTIPLE_WORKFLOWS: '本期仅支持导入包含一个工作流的本地包。',
-            WFPKG_WORKFLOW_INVALID: '本地包中的工作流定义无效，无法完成预检。',
-            WFPKG_INSPECTION_NOT_FOUND: '预检记录不存在，请重新上传并预检。',
-            WFPKG_INSPECTION_EXPIRED: '预检已过期，请重新上传并预检。',
-            WFPKG_INSPECTION_CONSUMED: '该预检已完成导入，不能重复使用。',
-            WFPKG_CONFLICT_CHANGED: '本地工作流在预检后发生变化，请重新预检后再导入。',
-            WFPKG_ID_CONFLICT: '当前处理方式与最新冲突状态不匹配，请重新预检。',
-            WFPKG_INVALID_ACTION: '导入处理方式无效，请重新选择。',
-            WFPKG_INVALID_RENAME_ID: '请输入可用的新工作流 ID。',
-            WFPKG_OVERWRITE_CONFIRMATION_REQUIRED: '请勾选确认后再覆盖本地工作流。',
-            WFPKG_IDEMPOTENCY_KEY_REQUIRED: '浏览器无法生成导入请求标识，请刷新页面后重试。',
-            WFPKG_IDEMPOTENCY_KEY_REUSED: '导入请求状态异常，请重新预检后再试。',
-            WFPKG_IMPORT_FAILED: '导入失败，本地工作流未被修改。',
-            WFPKG_EXPORT_FAILED: '导出失败，请稍后重试。',
-            WFPKG_WORKFLOW_NOT_FOUND: '未找到该工作流，无法导出。'
+        const errorKeys = {
+            WFPKG_FILE_REQUIRED: 'fileRequired',
+            WFPKG_FILE_TOO_LARGE: 'fileTooLarge',
+            WFPKG_INVALID_ARCHIVE: 'invalidArchive',
+            WFPKG_UNSUPPORTED_FORMAT: 'unsupportedFormat',
+            WFPKG_INVALID_MANIFEST: 'invalidManifest',
+            WFPKG_CHECKSUM_MISMATCH: 'checksumMismatch',
+            WFPKG_MULTIPLE_WORKFLOWS: 'multipleWorkflows',
+            WFPKG_WORKFLOW_INVALID: 'workflowInvalid',
+            WFPKG_INSPECTION_NOT_FOUND: 'inspectionNotFound',
+            WFPKG_INSPECTION_EXPIRED: 'inspectionExpired',
+            WFPKG_INSPECTION_CONSUMED: 'inspectionConsumed',
+            WFPKG_CONFLICT_CHANGED: 'conflictChanged',
+            WFPKG_ID_CONFLICT: 'idConflict',
+            WFPKG_INVALID_ACTION: 'invalidAction',
+            WFPKG_INVALID_RENAME_ID: 'invalidRenameId',
+            WFPKG_OVERWRITE_CONFIRMATION_REQUIRED: 'overwriteConfirmationRequired',
+            WFPKG_IDEMPOTENCY_KEY_REQUIRED: 'idempotencyKeyRequired',
+            WFPKG_IDEMPOTENCY_KEY_REUSED: 'idempotencyKeyReused',
+            WFPKG_IMPORT_FAILED: 'importFailed',
+            WFPKG_EXPORT_FAILED: 'exportFailed',
+            WFPKG_WORKFLOW_NOT_FOUND: 'workflowNotFound'
         };
-        return messages[code] || (error && error.message) || '操作未完成，请稍后重试。';
+        const key = errorKeys[code];
+        if (key) return workflowPackageText('workflows.package.errors.' + key, '操作未完成，请稍后重试。');
+        return (error && error.message) || workflowPackageText('workflows.package.errors.generic', '操作未完成，请稍后重试。');
     }
 
     function workflowPackageConflictCopy(conflict) {
         const state = (conflict && conflict.state) || 'none';
-        if (state === 'identical') return { message: '检测到同 ID 且内容相同的本地工作流；本次将跳过导入。', type: 'success' };
-        if (state === 'id_conflict') return { message: '检测到同 ID 但内容不同的本地工作流。默认保留本地版本。', type: 'warning' };
-        return { message: '未发现同 ID 的本地工作流，可创建导入。', type: 'success' };
+        if (state === 'identical') return { message: workflowPackageText('workflows.package.conflict.identical', '检测到同 ID 且内容相同的本地工作流；本次将跳过导入。'), type: 'success' };
+        if (state === 'id_conflict') return { message: workflowPackageText('workflows.package.conflict.idConflict', '检测到同 ID 但内容不同的本地工作流。默认保留本地版本。'), type: 'warning' };
+        return { message: workflowPackageText('workflows.package.conflict.none', '未发现同 ID 的本地工作流，可创建导入。'), type: 'success' };
     }
 
     function renderWorkflowPackageInspection() {
@@ -1965,12 +1967,12 @@
         const conflict = inspection.conflict || {};
         const conflictCopy = workflowPackageConflictCopy(conflict);
         const rows = [
-            ['工作流名称', workflow.name || '未命名工作流'],
-            ['源工作流 ID', workflow.source_id || '—'],
-            ['源版本', workflow.source_revision || '—'],
-            ['图规模', `${workflow.node_count || 0} 个节点 · ${workflow.edge_count || 0} 条连线`],
-            ['内容摘要', workflow.content_hash || '—'],
-            ['预检有效期', inspection.expires_at || '—']
+            [workflowPackageText('workflows.package.summary.workflowName', '工作流名称'), workflow.name || workflowPackageText('workflows.package.summary.unnamedWorkflow', '未命名工作流')],
+            [workflowPackageText('workflows.package.summary.sourceId', '源工作流 ID'), workflow.source_id || '—'],
+            [workflowPackageText('workflows.package.summary.sourceRevision', '源版本'), workflow.source_revision || '—'],
+            [workflowPackageText('workflows.package.summary.graphSize', '图规模'), workflowPackageText('workflows.package.summary.graphSizeValue', `${workflow.node_count || 0} 个节点 · ${workflow.edge_count || 0} 条连线`, { nodes: workflow.node_count || 0, edges: workflow.edge_count || 0 })],
+            [workflowPackageText('workflows.package.summary.contentHash', '内容摘要'), workflow.content_hash || '—'],
+            [workflowPackageText('workflows.package.summary.expiresAt', '预检有效期'), inspection.expires_at || '—']
         ];
         if (!target) return;
         target.innerHTML = `<div class="workflow-package-status is-${conflictCopy.type}">${esc(conflictCopy.message)}</div>` + rows.map(function (row) {
@@ -1990,7 +1992,7 @@
         const submit = workflowPackageSubmitBtn();
         const inspection = workflowPackageState.inspection;
         if (!inspection) {
-            if (target) workflowPackageSetStatus(target, message || '请先选择本地包并完成预检。', type || '');
+            if (target) workflowPackageSetStatus(target, message || workflowPackageText('workflows.package.resolution.needInspection', '请先选择本地包并完成预检。'), type || '');
             if (submit) submit.disabled = true;
             return;
         }
@@ -2004,18 +2006,18 @@
         let html = '';
         if (message) html += `<div class="workflow-package-status${type ? ' is-' + esc(type) : ''}">${esc(message)}</div>`;
         if (conflictState === 'none') {
-            html += '<div class="workflow-package-status is-success">导入后会创建一个新的本地工作流。</div>';
+            html += `<div class="workflow-package-status is-success">${esc(workflowPackageText('workflows.package.resolution.createHint', '导入后会创建一个新的本地工作流。'))}</div>`;
         } else if (conflictState === 'identical') {
-            html += '<div class="workflow-package-status is-success">内容已经存在，无需重复导入。</div>';
+            html += `<div class="workflow-package-status is-success">${esc(workflowPackageText('workflows.package.resolution.identicalHint', '内容已经存在，无需重复导入。'))}</div>`;
         } else {
-            html += workflowPackageResolutionCard('keep_existing', '保留本地版本', '不修改当前本地工作流；导入记录会保留。', action === 'keep_existing');
+            html += workflowPackageResolutionCard('keep_existing', workflowPackageText('workflows.package.resolution.keepExisting', '保留本地版本'), workflowPackageText('workflows.package.resolution.keepExistingHint', '不修改当前本地工作流；导入记录会保留。'), action === 'keep_existing');
             if (!workflowPackageState.riskChoicesVisible) {
-                html += '<button type="button" class="workflow-package-reveal" onclick="revealWorkflowPackageRiskChoices()">更改处理方式</button>';
+                html += `<button type="button" class="workflow-package-reveal" onclick="revealWorkflowPackageRiskChoices()">${esc(workflowPackageText('workflows.package.resolution.revealRiskChoices', '更改处理方式'))}</button>`;
             } else {
-                html += workflowPackageResolutionCard('overwrite', '覆盖本地版本', '替换名称、描述、图定义和启用状态；需要再次确认。', action === 'overwrite');
-                html += workflowPackageResolutionCard('rename', '另存为新 ID', '保留当前本地工作流，并以新的 ID 创建副本。', action === 'rename');
+                html += workflowPackageResolutionCard('overwrite', workflowPackageText('workflows.package.resolution.overwrite', '覆盖本地版本'), workflowPackageText('workflows.package.resolution.overwriteHint', '替换名称、描述、图定义和启用状态；需要再次确认。'), action === 'overwrite');
+                html += workflowPackageResolutionCard('rename', workflowPackageText('workflows.package.resolution.rename', '另存为新 ID'), workflowPackageText('workflows.package.resolution.renameHint', '保留当前本地工作流，并以新的 ID 创建副本。'), action === 'rename');
                 if (action === 'rename') {
-                    html += `<label class="workflow-package-rename-field">新的工作流 ID<input id="workflow-package-new-id" class="form-input" type="text" value="${esc(workflowPackageState.newWorkflowId)}" placeholder="例如：web-scan-basic-copy" oninput="updateWorkflowPackageRenameId()" autocomplete="off"></label>`;
+                    html += `<label class="workflow-package-rename-field">${esc(workflowPackageText('workflows.package.resolution.newWorkflowId', '新的工作流 ID'))}<input id="workflow-package-new-id" class="form-input" type="text" value="${esc(workflowPackageState.newWorkflowId)}" placeholder="${esc(workflowPackageText('workflows.package.resolution.newWorkflowIdPlaceholder', '例如：web-scan-basic-copy'))}" oninput="updateWorkflowPackageRenameId()" autocomplete="off"></label>`;
                 }
             }
         }
@@ -2023,9 +2025,9 @@
         if (submit) {
             const renameIncomplete = action === 'rename' && !workflowPackageState.newWorkflowId.trim();
             submit.disabled = !action || renameIncomplete;
-            if (action === 'overwrite') submit.textContent = '继续确认覆盖';
-            else if (action === 'rename') submit.textContent = '确认另存';
-            else submit.textContent = action === 'create' ? '确认创建' : '确认完成';
+            if (action === 'overwrite') submit.textContent = workflowPackageText('workflows.package.resolution.continueOverwrite', '继续确认覆盖');
+            else if (action === 'rename') submit.textContent = workflowPackageText('workflows.package.resolution.confirmRename', '确认另存');
+            else submit.textContent = action === 'create' ? workflowPackageText('workflows.package.resolution.confirmCreate', '确认创建') : workflowPackageText('workflows.package.resolution.confirmComplete', '确认完成');
         }
         workflowPackageSetStep('import');
     }
@@ -2065,19 +2067,22 @@
 
     function renderWorkflowPackageImportResult(importRecord) {
         const result = importRecord && importRecord.result;
-        const messages = {
-            created: '导入成功，已创建新的本地工作流。',
-            overwritten: '导入成功，已覆盖本地工作流。',
-            renamed: '导入成功，已按新 ID 创建本地工作流。',
-            kept_existing: '已保留本地工作流，未写入任何更改。',
-            skipped_identical: '本地已存在相同内容，已跳过导入。'
+        const resultKeys = {
+            created: 'created',
+            overwritten: 'overwritten',
+            renamed: 'renamed',
+            kept_existing: 'keptExisting',
+            skipped_identical: 'skippedIdentical'
         };
-        const message = messages[result] || '导入已完成。';
+        const resultKey = resultKeys[result];
+        const message = resultKey
+            ? workflowPackageText('workflows.package.result.' + resultKey, '导入已完成。')
+            : workflowPackageText('workflows.package.result.complete', '导入已完成。');
         renderWorkflowPackageResolution(message, result === 'kept_existing' || result === 'skipped_identical' ? '' : 'success');
         const submit = workflowPackageSubmitBtn();
         if (submit) {
             submit.disabled = true;
-            submit.textContent = '导入已完成';
+            submit.textContent = workflowPackageText('workflows.package.result.completedAction', '导入已完成');
         }
     }
 
@@ -2143,7 +2148,7 @@
         const client = workflowPackageClient();
         const button = document.getElementById('workflow-package-inspect-btn');
         if (!client || typeof apiFetch !== 'function') {
-            displayWorkflowPackageError({ code: 'WFPKG_REQUEST_FAILED', message: '导入服务尚未准备好，请刷新页面后重试。' });
+            displayWorkflowPackageError({ code: 'WFPKG_REQUEST_FAILED', message: workflowPackageText('workflows.package.errors.serviceUnavailable', '导入服务尚未准备好，请刷新页面后重试。') });
             return;
         }
         if (button) button.disabled = true;
@@ -2268,7 +2273,7 @@
         if (typeof requirePermission === 'function' && !requirePermission('workflow:read')) return;
         const id = currentWorkflowId || readWorkflowMetaFromForm().id;
         if (!id) {
-            if (typeof showNotification === 'function') showNotification('请先选择已保存的工作流后再导出。', 'warning');
+            if (typeof showNotification === 'function') showNotification(workflowPackageText('workflows.package.exportSelectSaved', '请先选择已保存的工作流后再导出。'), 'warning');
             return;
         }
         try {
@@ -2320,6 +2325,10 @@
         if (page && typeof window.applyTranslations === 'function') {
             window.applyTranslations(page);
         }
+        ['workflow-package-import-modal', 'workflow-package-overwrite-modal'].forEach(function (id) {
+            const modal = document.getElementById(id);
+            if (modal && typeof window.applyTranslations === 'function') window.applyTranslations(modal);
+        });
         const connectBtn = document.getElementById('workflow-connect-btn');
         if (connectBtn) {
             connectBtn.textContent = connectMode ? _t('workflows.connecting') : _t('workflows.connect');
@@ -2334,6 +2343,12 @@
         }
         if (typeof loadWorkflowOptionsForRoleModal === 'function') {
             loadWorkflowOptionsForRoleModal();
+        }
+        if (workflowPackageState.importRecord) {
+            renderWorkflowPackageImportResult(workflowPackageState.importRecord);
+        } else {
+            renderWorkflowPackageInspection();
+            renderWorkflowPackageResolution();
         }
     }
 
