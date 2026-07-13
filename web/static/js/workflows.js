@@ -2188,14 +2188,14 @@
 
     async function performWorkflowPackageImport(request) {
         const client = workflowPackageClient();
-        const signature = JSON.stringify(request);
-        if (!workflowPackageState.idempotencyKey || workflowPackageState.requestSignature !== signature) {
-            workflowPackageState.idempotencyKey = client.createIdempotencyKey();
-            workflowPackageState.requestSignature = signature;
-        }
         const submit = workflowPackageSubmitBtn();
         if (submit) submit.disabled = true;
         try {
+            const signature = JSON.stringify(request);
+            if (!workflowPackageState.idempotencyKey || workflowPackageState.requestSignature !== signature) {
+                workflowPackageState.idempotencyKey = client.createIdempotencyKey();
+                workflowPackageState.requestSignature = signature;
+            }
             const data = await client.applyImport(apiFetch, request, workflowPackageState.idempotencyKey);
             workflowPackageState.importRecord = data.import || data;
             workflowPackageStorageSet(WORKFLOW_PACKAGE_IMPORT_STORAGE_KEY, workflowPackageState.importRecord.id || '');

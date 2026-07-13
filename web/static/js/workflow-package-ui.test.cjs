@@ -33,3 +33,8 @@ test('预检无效包的契约错误码都有中文状态分支', () => {
         'WFPKG_WORKFLOW_INVALID'
     ].forEach((code) => assert.match(workflows, new RegExp(code)));
 });
+
+test('导入请求标识生成失败会进入中文错误处理', () => {
+    const workflows = fs.readFileSync('web/static/js/workflows.js', 'utf8');
+    assert.match(workflows, /async function performWorkflowPackageImport\(request\)[\s\S]*?try\s*\{[\s\S]*?client\.createIdempotencyKey\(\)[\s\S]*?catch \(error\) \{\s*displayWorkflowPackageError\(error\)/);
+});
