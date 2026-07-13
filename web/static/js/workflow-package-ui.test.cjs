@@ -21,3 +21,15 @@ test('工作流脚本调用包契约的全部端点与冲突错误码', () => {
     assert.match(workflows, /WFPKG_CONFLICT_CHANGED/);
     assert.match(workflows, /WFPKG_INSPECTION_EXPIRED/);
 });
+
+test('预检无效包的契约错误码都有中文状态分支', () => {
+    const workflows = fs.readFileSync('web/static/js/workflows.js', 'utf8');
+    [
+        'WFPKG_INVALID_ARCHIVE',
+        'WFPKG_UNSUPPORTED_FORMAT',
+        'WFPKG_INVALID_MANIFEST',
+        'WFPKG_CHECKSUM_MISMATCH',
+        'WFPKG_MULTIPLE_WORKFLOWS',
+        'WFPKG_WORKFLOW_INVALID'
+    ].forEach((code) => assert.match(workflows, new RegExp(code)));
+});
