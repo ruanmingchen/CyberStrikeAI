@@ -29,37 +29,9 @@ func newPlanExecuteExecutor(ctx context.Context, cfg *planexecute.ExecutorConfig
 		genInputFn = planExecuteDefaultGenExecutorInput
 	}
 	genInput := func(ctx context.Context, instruction string, _ *adk.AgentInput) ([]adk.Message, error) {
-		plan, ok := adk.GetSessionValue(ctx, planexecute.PlanSessionKey)
-		if !ok {
-			return nil, fmt.Errorf("plan_execute executor: session value %q missing (possible session corruption)", planexecute.PlanSessionKey)
-		}
-		plan_, ok := plan.(planexecute.Plan)
-		if !ok {
-			return nil, fmt.Errorf("plan_execute executor: session value %q has invalid type %T", planexecute.PlanSessionKey, plan)
-		}
-
-		userInput, ok := adk.GetSessionValue(ctx, planexecute.UserInputSessionKey)
-		if !ok {
-			return nil, fmt.Errorf("plan_execute executor: session value %q missing (possible session corruption)", planexecute.UserInputSessionKey)
-		}
-		userInput_, ok := userInput.([]adk.Message)
-		if !ok {
-			return nil, fmt.Errorf("plan_execute executor: session value %q has invalid type %T", planexecute.UserInputSessionKey, userInput)
-		}
-
-		var executedSteps_ []planexecute.ExecutedStep
-		executedStep, ok := adk.GetSessionValue(ctx, planexecute.ExecutedStepsSessionKey)
-		if ok {
-			executedSteps_, ok = executedStep.([]planexecute.ExecutedStep)
-			if !ok {
-				return nil, fmt.Errorf("plan_execute executor: session value %q has invalid type %T", planexecute.ExecutedStepsSessionKey, executedStep)
-			}
-		}
-
-		in := &planexecute.ExecutionContext{
-			UserInput:     userInput_,
-			Plan:          plan_,
-			ExecutedSteps: executedSteps_,
+		in, err := loadPlanExecuteExecutorContext(ctx)
+		if err != nil {
+			return nil, err
 		}
 		return genInputFn(ctx, in)
 	}
@@ -77,6 +49,42 @@ func newPlanExecuteExecutor(ctx context.Context, cfg *planexecute.ExecutorConfig
 		agentCfg.Handlers = handlers
 	}
 	return adk.NewChatModelAgent(ctx, agentCfg)
+}
+
+// loadPlanExecuteExecutorContext reads the official planexecute session keys with strict typing.
+func loadPlanExecuteExecutorContext(ctx context.Context) (*planexecute.ExecutionContext, error) {
+	plan, ok := adk.GetSessionValue(ctx, planexecute.PlanSessionKey)
+	if !ok {
+		return nil, fmt.Errorf("plan_execute executor: session value %q missing (possible session corruption)", planexecute.PlanSessionKey)
+	}
+	plan_, ok := plan.(planexecute.Plan)
+	if !ok {
+		return nil, fmt.Errorf("plan_execute executor: session value %q has invalid type %T", planexecute.PlanSessionKey, plan)
+	}
+
+	userInput, ok := adk.GetSessionValue(ctx, planexecute.UserInputSessionKey)
+	if !ok {
+		return nil, fmt.Errorf("plan_execute executor: session value %q missing (possible session corruption)", planexecute.UserInputSessionKey)
+	}
+	userInput_, ok := userInput.([]adk.Message)
+	if !ok {
+		return nil, fmt.Errorf("plan_execute executor: session value %q has invalid type %T", planexecute.UserInputSessionKey, userInput)
+	}
+
+	var executedSteps_ []planexecute.ExecutedStep
+	executedStep, ok := adk.GetSessionValue(ctx, planexecute.ExecutedStepsSessionKey)
+	if ok {
+		executedSteps_, ok = executedStep.([]planexecute.ExecutedStep)
+		if !ok {
+			return nil, fmt.Errorf("plan_execute executor: session value %q has invalid type %T", planexecute.ExecutedStepsSessionKey, executedStep)
+		}
+	}
+
+	return &planexecute.ExecutionContext{
+		UserInput:     userInput_,
+		Plan:          plan_,
+		ExecutedSteps: executedSteps_,
+	}, nil
 }
 
 // planExecuteDefaultGenExecutorInput 对齐 Eino planexecute.defaultGenExecutorInputFn（包外不可引用默认实现）。
