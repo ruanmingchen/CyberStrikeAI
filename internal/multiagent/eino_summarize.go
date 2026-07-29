@@ -124,11 +124,6 @@ func newEinoSummarizationMiddleware(
 			trigger = 4096
 		}
 	}
-	preserveMax := trigger / 3
-	if preserveMax < 2048 {
-		preserveMax = 2048
-	}
-
 	modelName := strings.TrimSpace(appCfg.OpenAI.Model)
 	if modelName == "" {
 		modelName = "gpt-4o"
@@ -237,11 +232,9 @@ func newEinoSummarizationMiddleware(
 		TokenCounter:       tokenCounter,
 		UserInstruction:    einoSummarizeUserInstruction,
 		EmitInternalEvents: emitInternalEvents,
+		// TranscriptFilePath 仅在未设置 Finalize 时由 middleware 默认路径生效；
+		// 自定义 Finalize 时改由 DefaultFinalize + 项目逻辑组合（见下方 Finalize）。
 		TranscriptFilePath: transcriptPath,
-		PreserveUserMessages: &summarization.PreserveUserMessages{
-			Enabled:   true,
-			MaxTokens: preserveMax,
-		},
 		Retry: &summarization.RetryConfig{
 			MaxRetries: &retryMax,
 			ShouldRetry: func(_ context.Context, _ adk.Message, err error) bool {
@@ -265,18 +258,17 @@ func newEinoSummarizationMiddleware(
 			},
 		},
 		Finalize: func(ctx context.Context, originalMessages []adk.Message, summary adk.Message) ([]adk.Message, error) {
-			summary = stripAnalysisFromSummarizationMessage(summary)
-			userLedger := buildOriginalUserIntentLedgerMessage(originalMessages, userLedgerMaxRunes, userLedgerEntryMaxRunes)
-			compactionMessages := stripOriginalUserIntentLedgerFromMessages(originalMessages)
-			out, ferr := summarizeFinalizeWithRecentAssistantToolTrail(ctx, compactionMessages, summary, tokenCounter, recentTrailMax)
-			if ferr != nil {
-				return nil, ferr
-			}
-			out = mergeMessageIntoLeadingSystem(out, userLedger)
-			if appCfg != nil {
-				out = refreshFactIndexInMessages(out, db, projectID, appCfg.Project, logger)
-			}
-			return out, nil
+			return finalizeSummarizationForV09(ctx, originalMessages, summary, finalizeSummarizationOpts{
+				transcriptPath:          transcriptPath,
+				tokenCounter:            tokenCounter,
+				recentTrailMax:          recentTrailMax,
+				userLedgerMaxRunes:      userLedgerMaxRunes,
+				userLedgerEntryMaxRunes: userLedgerEntryMaxRunes,
+				appCfg:                  appCfg,
+				db:                      db,
+				projectID:               projectID,
+				logger:                  logger,
+			})
 		},
 		Callback: func(ctx context.Context, before, after adk.ChatModelAgentState) error {
 			if transcriptPath != "" && len(before.Messages) > 0 {
@@ -497,6 +489,85 @@ func refreshFactIndexInMessages(msgs []adk.Message, db *database.DB, projectID s
 //   - 其它 assistant(reply, 无 tool_calls) 单条为一个 round。
 //
 // 倒序挑 round（预算不够即放弃该 round），保证 tool 消息不会跨 round 被孤立。
+// finalizeSummarizationOpts 控制 V0.9 自定义 Finalize 组合链。
+type finalizeSummarizationOpts struct {
+	transcriptPath          string
+	tokenCounter            summarization.TokenCounterFunc
+	recentTrailMax          int
+	userLedgerMaxRunes      int
+	userLedgerEntryMaxRunes int
+	appCfg                  *config.Config
+	db                      *database.DB
+	projectID               string
+	logger                  *zap.Logger
+}
+
+// finalizeSummarizationForV09 实现 V0.9 summarization Finalize 语义：
+//
+//	raw summary
+//	→ strip <analysis>
+//	→ DefaultFinalize（PreserveUserMessages + preamble/postamble）
+//	→ TranscriptFilePath 提醒（DefaultFinalize 不含该字段）
+//	→ 用户意图账本 + 最近 assistant/tool 轨迹 + fact index
+//	→ 单一 leading system message
+func finalizeSummarizationForV09(
+	ctx context.Context,
+	originalMessages []adk.Message,
+	summary adk.Message,
+	opts finalizeSummarizationOpts,
+) ([]adk.Message, error) {
+	summary = stripAnalysisFromSummarizationMessage(summary)
+
+	defaulted, err := summarization.DefaultFinalize(ctx, originalMessages, summary)
+	if err != nil {
+		return nil, err
+	}
+	processedSummary := pickDefaultFinalizeSummaryMessage(defaulted)
+	processedSummary = appendTranscriptPathReminder(processedSummary, opts.transcriptPath)
+
+	userLedger := buildOriginalUserIntentLedgerMessage(originalMessages, opts.userLedgerMaxRunes, opts.userLedgerEntryMaxRunes)
+	compactionMessages := stripOriginalUserIntentLedgerFromMessages(originalMessages)
+	out, ferr := summarizeFinalizeWithRecentAssistantToolTrail(ctx, compactionMessages, processedSummary, opts.tokenCounter, opts.recentTrailMax)
+	if ferr != nil {
+		return nil, ferr
+	}
+	out = mergeMessageIntoLeadingSystem(out, userLedger)
+	if opts.appCfg != nil {
+		out = refreshFactIndexInMessages(out, opts.db, opts.projectID, opts.appCfg.Project, opts.logger)
+	}
+	return out, nil
+}
+
+// pickDefaultFinalizeSummaryMessage 取 DefaultFinalize 产出的 summary 消息（通常为末条 user/summary）。
+func pickDefaultFinalizeSummaryMessage(msgs []adk.Message) adk.Message {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i] != nil {
+			return msgs[i]
+		}
+	}
+	return nil
+}
+
+// appendTranscriptPathReminder 在 summary 正文末尾追加 transcript 路径提醒。
+// V0.9 的 DefaultFinalize 不会读取 Config.TranscriptFilePath，需在自定义 Finalize 中显式补上。
+func appendTranscriptPathReminder(summary adk.Message, transcriptPath string) adk.Message {
+	transcriptPath = strings.TrimSpace(transcriptPath)
+	if summary == nil || transcriptPath == "" {
+		return summary
+	}
+	reminder := fmt.Sprintf("如果你需要压缩之前的具体细节（如精确的代码片段、错误消息或你生成的内容），完整的对话记录位于：%s", transcriptPath)
+	if strings.Contains(summary.Content, transcriptPath) {
+		return summary
+	}
+	out := *summary
+	if strings.TrimSpace(out.Content) == "" {
+		out.Content = reminder
+	} else {
+		out.Content = strings.TrimRight(out.Content, "\n") + "\n\n" + reminder
+	}
+	return &out
+}
+
 func summarizeFinalizeWithRecentAssistantToolTrail(
 	ctx context.Context,
 	originalMessages []adk.Message,
