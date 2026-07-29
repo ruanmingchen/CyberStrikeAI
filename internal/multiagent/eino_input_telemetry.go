@@ -45,15 +45,25 @@ func (m *einoModelInputTelemetryMiddleware) BeforeModelRewriteState(
 	if m == nil || m.logger == nil || state == nil {
 		return ctx, state, nil
 	}
-	tokens := estimateTokensForMessagesAndTools(ctx, m.modelName, state.Messages, mcTools(mc))
+	tools := stateToolInfos(state, mc)
+	tokens := estimateTokensForMessagesAndTools(ctx, m.modelName, state.Messages, tools)
 	m.logger.Info("eino model input estimated",
 		zap.String("phase", m.phase),
 		zap.String("conversation_id", m.conversationID),
 		zap.Int("messages", len(state.Messages)),
-		zap.Int("tools", len(mcTools(mc))),
+		zap.Int("tools", len(tools)),
 		zap.Int("input_tokens_estimated", tokens),
 	)
 	return ctx, state, nil
+}
+
+// stateToolInfos prefers ChatModelAgentState.ToolInfos (V0.9 ToolSearch persists here).
+// Falls back to ModelContext.Tools for older call sites / empty state.
+func stateToolInfos(state *adk.ChatModelAgentState, mc *adk.ModelContext) []*schema.ToolInfo {
+	if state != nil && len(state.ToolInfos) > 0 {
+		return state.ToolInfos
+	}
+	return mcTools(mc)
 }
 
 func mcTools(mc *adk.ModelContext) []*schema.ToolInfo {

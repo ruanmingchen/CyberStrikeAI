@@ -470,13 +470,29 @@ func runEinoADKAgentLoop(ctx context.Context, args *einoADKRunLoopArgs, baseMsgs
 			}
 			return runErr
 		}
-		// context.Canceled 是唯一应当直接终止编排的错误（用户关闭页面、主动停止等）。
+		// V0.9 CancelError：用户主动取消，不记为 Agent 业务失败。
+		var cancelErr *adk.CancelError
+		if errors.As(runErr, &cancelErr) {
+			flushAllPendingAsFailed(runErr)
+			if progress != nil {
+				progress("cancelled", runErr.Error(), map[string]interface{}{
+					"conversationId": conversationID,
+					"source":         "eino",
+					"errorKind":      "cancel",
+					"orchestration":  orchMode,
+				})
+			}
+			return runErr
+		}
+		// context.Canceled：请求或连接取消。
 		if errors.Is(runErr, context.Canceled) {
 			flushAllPendingAsFailed(runErr)
 			if progress != nil {
-				progress("error", runErr.Error(), map[string]interface{}{
+				progress("cancelled", runErr.Error(), map[string]interface{}{
 					"conversationId": conversationID,
 					"source":         "eino",
+					"errorKind":      "context_canceled",
+					"orchestration":  orchMode,
 				})
 			}
 			return runErr
@@ -1513,5 +1529,6 @@ func buildEinoCheckpointID(orchMode string) string {
 	if mode == "" {
 		mode = "default"
 	}
-	return "runner-" + mode
+	// V0.9 使用独立命名空间，避免与 V0.8 checkpoint 交叉恢复。
+	return "runner-v09-" + mode
 }
